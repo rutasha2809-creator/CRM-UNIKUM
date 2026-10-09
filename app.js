@@ -852,64 +852,266 @@ function repTax(){
 }
 
 /* ============================ справочники ============================ */
+/* ============================ справочники (НСИ) ============================ */
+const NSI_MENU=[
+  {title:"Операции",items:[{k:"articles",name:"Статьи операций"},{k:"sources",name:"Источники"}]},
+  {title:"Занятия",items:[{k:"directions",name:"Направления"},{k:"plgroups",name:"Группы для P&L"},{k:"subjects",name:"Предметы"},{k:"tariffs",name:"Тарифы"},{k:"teachers",name:"Педагоги"},{k:"students",name:"Ученики"}]},
+  {title:"Настройки",items:[{k:"taxes",name:"Налоги"},{k:"access",name:"Доступ"}]}
+];
+const NSI_NAME=Object.fromEntries(NSI_MENU.flatMap(g=>g.items.map(i=>[i.k,i.name])));
+const NSI_KEEP_ART=["Прочие доходы","Прочие расходы"];
+/* простые справочники-списки (хранятся строками в настройках) */
+const NSI_LIST={
+  sources:{arr:()=>R().sources,col:"Источник",title:"Источник",newTitle:"Новый источник",added:"Источник добавлен",del:"Удалить источник?",keep:[]},
+  subjects:{arr:()=>R().subjects,col:"Предмет",title:"Предмет",newTitle:"Новый предмет",added:"Предмет добавлен",del:"Удалить предмет?",keep:["Без привязки"]},
+  plgroups:{arr:()=>R().groups,col:"Группа для P&L",title:"Группа для P&L",newTitle:"Новая группа для P&L",added:"Группа добавлена",del:"Удалить группу?",keep:["Без привязки"]}
+};
+function nsiCount(k){
+  switch(k){case"articles":return R().articles.length;case"sources":return R().sources.length;case"directions":return R().directions.length;
+    case"plgroups":return R().groups.length;case"subjects":return R().subjects.length;case"tariffs":return S.tariffs.length;
+    case"teachers":return S.teachers.length;case"students":return S.students.length;case"access":return MEMBERS.length;default:return "";}
+}
+/* сколько раз значение справочника встречается в данных */
+function nsiUsage(k,name){
+  const ops=allOps(),ab=allAbon(),ls=allLessons();
+  switch(k){
+    case"articles":return ops.filter(o=>o.article===name).length;
+    case"sources":return ops.filter(o=>o.source===name).length;
+    case"directions":return ops.filter(o=>o.direction===name).length+ab.filter(a=>a.direction===name).length+ls.filter(l=>l.direction===name).length
+      +S.groups.filter(g=>g.direction===name).length+S.students.filter(s=>s.direction===name).length;
+    case"subjects":return ops.filter(o=>o.subject===name).length+ab.filter(a=>a.subject===name).length+ls.filter(l=>l.subject===name).length+S.groups.filter(g=>g.subject===name).length;
+    case"plgroups":return R().directions.filter(d=>(d.group||"Без привязки")===name).length;
+  }
+  return 0;
+}
+/* переименование: заменить значение во всех данных и сохранить затронутое */
+async function renameRef(k,oldN,newN){
+  const months=new Set(); let grp=false,stud=false;
+  const fix=(o,f,m)=>{if(o[f]===oldN){o[f]=newN;if(m)months.add(m);return true;}return false;};
+  if(k==="articles")for(const m in S.ops)S.ops[m].forEach(o=>fix(o,"article",m));
+  if(k==="sources")for(const m in S.ops)S.ops[m].forEach(o=>fix(o,"source",m));
+  if(k==="directions"||k==="subjects"){
+    const f=k==="directions"?"direction":"subject";
+    for(const m in S.ops)S.ops[m].forEach(o=>fix(o,f,m));
+    for(const m in S.abon)S.abon[m].forEach(a=>fix(a,f,m));
+    for(const m in S.lessons)S.lessons[m].forEach(l=>fix(l,f,m));
+    S.groups.forEach(g=>{if(fix(g,f))grp=true;});
+    if(k==="directions")S.students.forEach(s=>{if(fix(s,f))stud=true;});
+  }
+  if(k==="plgroups")R().directions.forEach(d=>{if(d.group===oldN)d.group=newN;});
+  let ok=await saveRefs();
+  for(const m of months){if(!(await saveMonth(m)))ok=false;}
+  if(grp&&!(await saveGroups()))ok=false;
+  if(stud&&!(await saveStudents()))ok=false;
+  return ok;
+}
+const nsiDup=(arr,name,skip)=>arr.some((x,j)=>j!==skip&&String(x).toLowerCase()===name.toLowerCase());
+const nsiBtns=(k,i,canEdit,canDel)=>`${canEdit?`<button class="btn mini" data-nsi-act="edit" data-k="${k}" data-i="${i}" title="Изменить">✎</button>`:""} ${canDel?`<button class="btn mini danger" data-nsi-act="del" data-k="${k}" data-i="${i}" title="Удалить">✕</button>`:""}`;
+
 function viewNsi(v){
-  const r=R();
+  if(!S.nsiTab){let t="articles";try{t=localStorage.getItem("un_nsiTab")||t;}catch(e){} S.nsiTab=NSI_NAME[t]&&t!=="students"?t:"articles";}
   v.innerHTML=`
-  <div class="head"><div><h1>Справочники</h1><p>Единая НСИ: статьи доходов и расходов, направления и их группировка для P&amp;L, тарифы абонементов, педагоги и параметры налогов.</p></div></div>
-  <div class="stack">
-    <div class="grid2" style="align-items:start">
-      <div class="panel"><header><h2>Статьи операций</h2><button class="btn mini" data-act="add-article">Добавить</button></header>
-        <div class="tw"><table><thead><tr><th>Статья</th><th>Тип</th><th>Характер</th><th></th></tr></thead><tbody>
-        ${r.articles.map((a,i)=>`<tr><td>${esc(a.name)}</td><td><span class="chip ${a.kind==="income"?"in":"out"}">${a.kind==="income"?"доход":"расход"}</span></td>
-        <td>${a.kind==="expense"?`<select data-art-nature="${i}" style="width:130px"><option value="var" ${a.nature!=="const"?"selected":""}>переменный</option><option value="const" ${a.nature==="const"?"selected":""}>постоянный</option></select>`:"—"}</td>
-        <td class="n"><button class="btn mini danger" data-act="del-article" data-i="${i}">✕</button></td></tr>`).join("")}
-        </tbody></table></div></div>
+  <div class="head"><div><h1>Справочники</h1></div></div>
+  <div class="nsi">
+    <nav class="panel nsi-menu">
+      <div class="nsi-find"><input type="search" id="nsi-global" placeholder="Поиск по всем справочникам" value="${esc(S.nsiGlobal||"")}" autocomplete="off"></div>
+      ${NSI_MENU.map(g=>`<div class="nsi-grp">${esc(g.title)}</div>${g.items.map(it=>`<button class="nsi-item" data-nsi-tab="${it.k}"><span>${esc(it.name)}</span><small>${nsiCount(it.k)}</small></button>`).join("")}`).join("")}
+    </nav>
+    <div id="nsi-main"></div>
+  </div>`;
+  v.querySelectorAll("[data-nsi-tab]").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.nsiTab;
+    if(k==="students"){S.nav="students";render();return;}
+    S.nsiTab=k;S.nsiQ="";S.nsiGlobal="";try{localStorage.setItem("un_nsiTab",k);}catch(e){}
+    const g=document.getElementById("nsi-global");if(g)g.value="";
+    renderNsiMain();
+  });
+  const gi=v.querySelector("#nsi-global");
+  gi.oninput=()=>{S.nsiGlobal=gi.value.trim();renderNsiMain();};
+  renderNsiMain();
+}
+function nsiMenuState(){
+  document.querySelectorAll("[data-nsi-tab]").forEach(b=>b.classList.toggle("on",!S.nsiGlobal&&b.dataset.nsiTab===S.nsiTab));
+}
+function renderNsiMain(){
+  const box=document.getElementById("nsi-main"); if(!box)return;
+  nsiMenuState();
+  if(S.nsiGlobal){box.innerHTML=nsiGlobalHTML(S.nsiGlobal);bindNsi(box);return;}
+  box.innerHTML=nsiSectionHTML(S.nsiTab);
+  bind(box); bindNsi(box);
+  const q=box.querySelector("#nsi-q"); if(q){q.oninput=()=>{S.nsiQ=q.value;nsiFilter(box);};nsiFilter(box);}
+}
+/* фильтр строк текущего справочника без перерисовки — поле поиска не теряет фокус */
+function nsiFilter(box){
+  const q=(S.nsiQ||"").trim().toLowerCase();
+  let shown=0;
+  box.querySelectorAll("tbody tr[data-s]").forEach(tr=>{const ok=!q||tr.dataset.s.includes(q);tr.style.display=ok?"":"none";if(ok)shown++;});
+  box.querySelectorAll("tbody tr.group[data-g]").forEach(h=>{const any=[...box.querySelectorAll(`tbody tr[data-s][data-g="${h.dataset.g}"]`)].some(tr=>tr.style.display!=="none");h.style.display=any?"":"none";});
+  const e=box.querySelector("[data-nsi-empty]"); if(e)e.style.display=shown?"none":"";
+}
+function nsiPanel(k,{tools="",body="",add=""}){
+  const search=["taxes","access"].includes(k)?"":`<input type="search" id="nsi-q" placeholder="Поиск" value="${esc(S.nsiQ||"")}" autocomplete="off">`;
+  return `<div class="panel">
+    <header class="nsi-head"><h2>${esc(NSI_NAME[k])} <span class="chip mut">${nsiCount(k)}</span></h2>
+      <div class="tools">${tools}${search}${add}</div></header>
+    ${body}
+    ${search?`<div class="empty" data-nsi-empty style="display:none">Ничего не найдено</div>`:""}
+  </div>`;
+}
+const sAttr=(...parts)=>esc(parts.join(" ").toLowerCase());
 
-      <div class="panel"><header><h2>Направления</h2><button class="btn mini" data-act="add-direction">Добавить</button></header>
-        <div class="tw"><table><thead><tr><th>Направление</th><th>Группа для P&amp;L</th><th></th></tr></thead><tbody>
-        ${r.directions.map((d,i)=>`<tr><td>${esc(d.name)}</td>
-        <td><select data-dir-group="${i}">${r.groups.map(g=>`<option ${d.group===g?"selected":""}>${esc(g)}</option>`).join("")}</select></td>
-        <td class="n"><button class="btn mini danger" data-act="del-direction" data-i="${i}">✕</button></td></tr>`).join("")}
-        </tbody></table></div></div>
-    </div>
-
-    <div class="grid2" style="align-items:start">
-      <div class="panel"><header><h2>Тарифы и виды оплаты</h2><button class="btn mini" data-act="add-tariff">Добавить</button></header>
-        <div class="tw"><table><thead><tr><th>Наименование</th><th class="n">Занятий</th><th class="n">Цена</th><th class="n">За занятие</th><th></th></tr></thead><tbody>
-        ${S.tariffs.map(t=>`<tr><td>${esc(t.name)}</td><td class="n">${t.lessons}</td><td class="n">${money(t.price)}</td><td class="n">${money(t.lessons?t.price/t.lessons:t.price)}</td>
-        <td class="n"><button class="btn mini" data-act="edit-tariff" data-id="${t.id}">✎</button> <button class="btn mini danger" data-act="del-tariff" data-id="${t.id}">✕</button></td></tr>`).join("")}
-        </tbody></table></div>
-        ${S.tariffs.length?"":`<div class="empty">Добавьте тарифы — они подставляются при продаже абонемента.</div>`}</div>
-
-      <div class="panel"><header><h2>Педагоги</h2><button class="btn mini" data-act="add-teacher">Добавить</button></header>
-        <div class="tw"><table><thead><tr><th>Педагог</th><th>Предмет</th><th class="n">Ставка за занятие</th><th class="n">Проведено занятий</th><th></th></tr></thead><tbody>
-        ${S.teachers.map(t=>{const cnt=allAbon().reduce((s,a)=>s+(a.visits||[]).filter(x=>(x.teacherId||a.teacherId)===t.id).length,0);
-        return `<tr><td>${esc(t.name)}</td><td>${esc(t.subject||"")}</td><td class="n">${t.rate?money(t.rate):"—"}</td><td class="n">${cnt}</td>
-        <td class="n"><button class="btn mini" data-act="edit-teacher" data-id="${t.id}">✎</button> <button class="btn mini danger" data-act="del-teacher" data-id="${t.id}">✕</button></td></tr>`;}).join("")}
-        </tbody></table></div></div>
-    </div>
-
-    <div class="panel"><header><h2>Параметры расчёта</h2><span class="sub">используются в отчётах «Рентабельность» и «Налоги»</span></header>
-      <div class="pad grid3">
+function nsiSectionHTML(k){
+  const r=R();
+  if(k==="articles"){
+    const f=S.nsiKind||"";
+    const seg=`<div class="seg">${[["","Все"],["income","Доходы"],["expense","Расходы"]].map(([v,t])=>`<button data-nsi-kind="${v}" class="${f===v?"on":""}">${t}</button>`).join("")}</div>`;
+    const row=(a,i)=>{const prot=NSI_KEEP_ART.includes(a.name);return `<tr data-s="${sAttr(a.name)}" data-g="${a.kind}"><td>${esc(a.name)}</td>
+      <td><span class="chip ${a.kind==="income"?"in":"out"}">${a.kind==="income"?"доход":"расход"}</span></td>
+      <td>${a.kind==="expense"?`<select data-art-nature="${i}" style="width:140px"><option value="var" ${a.nature!=="const"?"selected":""}>переменный</option><option value="const" ${a.nature==="const"?"selected":""}>постоянный</option></select>`:"—"}</td>
+      <td class="n">${nsiUsage("articles",a.name)||""}</td>
+      <td class="n">${nsiBtns("articles",i,!prot,!prot)}</td></tr>`;};
+    const idx=r.articles.map((a,i)=>[a,i]);
+    const part=(kind,title)=>{const list=idx.filter(([a])=>a.kind===kind);return list.length?`${f?"":`<tr class="group" data-g="${kind}"><td colspan="5">${title} · ${list.length}</td></tr>`}${list.map(([a,i])=>row(a,i)).join("")}`:"";};
+    const body=`<div class="tw"><table><thead><tr><th>Статья</th><th>Тип</th><th>Характер</th><th class="n">Операций</th><th></th></tr></thead><tbody>
+      ${f!=="expense"?part("income","Доходы"):""}${f!=="income"?part("expense","Расходы"):""}</tbody></table></div>`;
+    return nsiPanel(k,{tools:seg,body,add:`<button class="btn primary mini" data-nsi-act="add" data-k="articles">Добавить</button>`});
+  }
+  if(NSI_LIST[k]){
+    const c=NSI_LIST[k];
+    const head=k==="plgroups"?"Направлений":"Используется";
+    const body=`<div class="tw"><table><thead><tr><th>${esc(c.col)}</th><th class="n">${head}</th><th></th></tr></thead><tbody>
+      ${c.arr().map((x,i)=>{const prot=c.keep.includes(x);return `<tr data-s="${sAttr(x)}"><td>${esc(x)}</td><td class="n">${nsiUsage(k,x)||""}</td><td class="n">${nsiBtns(k,i,!prot,!prot)}</td></tr>`;}).join("")}
+      </tbody></table></div>`;
+    return nsiPanel(k,{body,add:`<button class="btn primary mini" data-nsi-act="add" data-k="${k}">Добавить</button>`});
+  }
+  if(k==="directions"){
+    const body=`<div class="tw"><table><thead><tr><th>Направление</th><th>Группа для P&amp;L</th><th class="n">Используется</th><th></th></tr></thead><tbody>
+      ${r.directions.map((d,i)=>{const prot=d.name==="Без привязки";return `<tr data-s="${sAttr(d.name,d.group)}"><td>${esc(d.name)}</td>
+      <td><select data-dir-group="${i}" style="min-width:220px">${r.groups.map(g=>`<option ${(d.group||"Без привязки")===g?"selected":""}>${esc(g)}</option>`).join("")}</select></td>
+      <td class="n">${nsiUsage("directions",d.name)||""}</td><td class="n">${nsiBtns("directions",i,!prot,!prot)}</td></tr>`;}).join("")}
+      </tbody></table></div>`;
+    return nsiPanel(k,{body,add:`<button class="btn primary mini" data-nsi-act="add" data-k="directions">Добавить</button>`});
+  }
+  if(k==="tariffs"){
+    const sold=(id)=>allAbon().filter(a=>a.tariffId===id).length;
+    const body=`<div class="tw"><table><thead><tr><th>Наименование</th><th class="n">Занятий</th><th class="n">Цена</th><th class="n">За занятие</th><th class="n">Продано</th><th></th></tr></thead><tbody>
+      ${S.tariffs.slice().sort((a,b)=>(a.lessons-b.lessons)||a.name.localeCompare(b.name,"ru")).map(t=>`<tr data-s="${sAttr(t.name)}"><td>${esc(t.name)}</td><td class="n">${t.lessons}</td><td class="n">${money(t.price)}</td><td class="n">${money(t.lessons?t.price/t.lessons:t.price)}</td><td class="n">${sold(t.id)||""}</td>
+      <td class="n"><button class="btn mini" data-act="edit-tariff" data-id="${t.id}" title="Изменить">✎</button> <button class="btn mini danger" data-act="del-tariff" data-id="${t.id}" title="Удалить">✕</button></td></tr>`).join("")}
+      </tbody></table></div>`;
+    return nsiPanel(k,{body,add:`<button class="btn primary mini" data-act="add-tariff">Добавить</button>`});
+  }
+  if(k==="teachers"){
+    const body=`<div class="tw"><table><thead><tr><th>Педагог</th><th>Предмет</th><th>Телефон</th><th class="n">Ставка за занятие</th><th class="n">Проведено занятий</th><th></th></tr></thead><tbody>
+      ${S.teachers.slice().sort((a,b)=>a.name.localeCompare(b.name,"ru")).map(t=>{const cnt=allAbon().reduce((s,a)=>s+(a.visits||[]).filter(x=>(x.teacherId||a.teacherId)===t.id).length,0);
+      return `<tr data-s="${sAttr(t.name,t.subject,t.phone)}"><td>${esc(t.name)}</td><td>${esc(t.subject||"")}</td><td>${esc(t.phone||"")}</td><td class="n">${t.rate?money(t.rate):"—"}</td><td class="n">${cnt||""}</td>
+      <td class="n"><button class="btn mini" data-act="edit-teacher" data-id="${t.id}" title="Изменить">✎</button> <button class="btn mini danger" data-act="del-teacher" data-id="${t.id}" title="Удалить">✕</button></td></tr>`;}).join("")}
+      </tbody></table></div>`;
+    return nsiPanel(k,{body,add:`<button class="btn primary mini" data-act="add-teacher">Добавить</button>`});
+  }
+  if(k==="taxes"){
+    const body=`<div class="pad grid2" style="max-width:560px">
         <label class="f"><span>Ставка УСН, %</span><input type="number" step="0.1" data-par="usn" value="${r.usn}"></label>
         <label class="f"><span>Фиксированный взнос ИП за год, ₽</span><input type="number" data-par="fixedFee" value="${r.fixedFee}"></label>
-        <label class="f"><span>Источники поступлений</span><input data-par="sources" value="${esc(r.sources.join(", "))}"></label>
       </div>
-      <div class="pad" style="padding-top:0"><button class="btn primary" data-act="save-par">Сохранить параметры</button></div>
-    </div>
-
-    <div class="panel"><header><h2>Доступ к программе</h2></header>
-      <div class="pad hint">Работать с базой центра могут только адреса из этого списка.</div>
+      <div class="pad" style="padding-top:0"><button class="btn primary" data-act="save-par">Сохранить</button></div>`;
+    return nsiPanel(k,{body});
+  }
+  if(k==="access"){
+    const body=`<div class="pad hint">Работать с базой центра могут только адреса из этого списка.</div>
       <div class="tw"><table><thead><tr><th>Почта</th><th>Имя</th><th>Роль</th><th></th></tr></thead><tbody>
       ${MEMBERS.map(m=>`<tr><td>${esc(m.email)}${m.email===ME?' <span class="chip mut">это вы</span>':""}</td><td>${esc(m.name||"")}</td>
       <td>${m.role==="owner"?"владелец":"пользователь"}</td>
       <td class="n">${m.email===ME?"":`<button class="btn mini danger" data-act="del-member" data-id="${esc(m.email)}">Закрыть доступ</button>`}</td></tr>`).join("")}
-      </tbody></table></div>
-    </div>
-  </div>`;
-  bind(v);
-  v.querySelectorAll("[data-art-nature]").forEach(s=>s.onchange=async()=>{R().articles[+s.dataset.artNature].nature=s.value;await saveRefs();toast("Статья обновлена");render();});
-  v.querySelectorAll("[data-dir-group]").forEach(s=>s.onchange=async()=>{R().directions[+s.dataset.dirGroup].group=s.value;await saveRefs();toast("Группировка обновлена");});
+      </tbody></table></div>`;
+    return nsiPanel(k,{body});
+  }
+  return "";
+}
+
+/* общий поиск по всем справочникам */
+function nsiGlobalHits(q){
+  q=q.toLowerCase(); const hits=[];
+  const add=(k,name,extra)=>{if((String(name||"")+" "+String(extra||"")).toLowerCase().includes(q))hits.push({k,name,extra:extra||""});};
+  R().articles.forEach(a=>add("articles",a.name,a.kind==="income"?"доход":"расход"));
+  R().sources.forEach(s=>add("sources",s));
+  R().directions.forEach(d=>add("directions",d.name,d.group));
+  R().groups.forEach(g=>add("plgroups",g));
+  R().subjects.forEach(s=>add("subjects",s));
+  S.tariffs.forEach(t=>add("tariffs",t.name,t.lessons+" зан."));
+  S.teachers.forEach(t=>add("teachers",t.name,t.subject));
+  S.students.forEach(s=>add("students",s.name,s.direction&&s.direction!=="Без привязки"?s.direction:""));
+  return hits;
+}
+function nsiGlobalHTML(q){
+  const hits=nsiGlobalHits(q);
+  return `<div class="panel"><header class="nsi-head"><h2>Поиск по всем справочникам <span class="chip mut">${hits.length}</span></h2></header>
+    ${hits.length?`<div class="tw"><table><thead><tr><th>Значение</th><th>Справочник</th><th></th></tr></thead><tbody>
+    ${hits.map(h=>`<tr class="nsi-hit" data-nsi-go="${h.k}" data-name="${esc(h.name)}"><td>${esc(h.name)}${h.extra?` <span class="chip mut">${esc(h.extra)}</span>`:""}</td><td>${esc(NSI_NAME[h.k])}</td><td class="n"><button class="btn mini">Открыть</button></td></tr>`).join("")}
+    </tbody></table></div>`:`<div class="empty">Ничего не найдено</div>`}</div>`;
+}
+
+/* обработчики справочников */
+function bindNsi(box){
+  box.querySelectorAll("[data-nsi-go]").forEach(tr=>tr.onclick=()=>{
+    const k=tr.dataset.nsiGo;
+    if(k==="students"){S.nsiGlobal="";S.nav="students";render();return;}
+    S.nsiTab=k;S.nsiQ=tr.dataset.name;S.nsiGlobal="";S.nsiKind="";
+    try{localStorage.setItem("un_nsiTab",k);}catch(e){}
+    const g=document.getElementById("nsi-global");if(g)g.value="";
+    renderNsiMain();
+  });
+  box.querySelectorAll("[data-nsi-kind]").forEach(b=>b.onclick=()=>{S.nsiKind=b.dataset.nsiKind;renderNsiMain();});
+  box.querySelectorAll("[data-art-nature]").forEach(s=>s.onchange=async()=>{R().articles[+s.dataset.artNature].nature=s.value;if(await saveRefs())toast("Статья обновлена");});
+  box.querySelectorAll("[data-dir-group]").forEach(s=>s.onchange=async()=>{R().directions[+s.dataset.dirGroup].group=s.value;if(await saveRefs())toast("Группировка обновлена");});
+  box.querySelectorAll("[data-nsi-act]").forEach(b=>b.onclick=async()=>{
+    const k=b.dataset.k,i=b.dataset.i===undefined?null:+b.dataset.i,act=b.dataset.nsiAct;
+    if(act==="add"||act==="edit"){
+      if(k==="articles")articleModal(i); else if(k==="directions")directionModal(i); else listModal(k,i);
+      return;
+    }
+    if(act==="del"){
+      const conf=k==="articles"?"Удалить статью?":k==="directions"?"Удалить направление?":NSI_LIST[k].del;
+      if(!confirm(conf))return;
+      if(k==="articles")R().articles.splice(i,1); else if(k==="directions")R().directions.splice(i,1); else NSI_LIST[k].arr().splice(i,1);
+      if(await saveRefs())toast("Удалено");
+      render();
+    }
+  });
+}
+function articleModal(i){
+  const a=i==null?null:R().articles[i];
+  const kind=a?a.kind:(S.nsiKind||"income");
+  modal(a?"Статья":"Новая статья",`<div class="grid3">
+    <label class="f"><span>Наименование</span><input name="name" value="${esc(a?a.name:"")}"></label>
+    <label class="f"><span>Тип</span><select name="kind"><option value="income" ${kind==="income"?"selected":""}>Доход</option><option value="expense" ${kind==="expense"?"selected":""}>Расход</option></select></label>
+    <label class="f"><span>Характер расхода</span><select name="nature"><option value="var" ${!a||a.nature!=="const"?"selected":""}>Переменный</option><option value="const" ${a&&a.nature==="const"?"selected":""}>Постоянный</option></select></label>
+  </div>`,async(l)=>{
+    const n=val(l,"name"); if(!n){toast("Укажите наименование");return false;}
+    if(nsiDup(R().articles.map(x=>x.name),n,i)){toast("Такое название уже есть");return false;}
+    const kd=val(l,"kind"),nt=val(l,"nature");
+    if(a){const old=a.name;Object.assign(a,{name:n,kind:kd,nature:nt});if(await (old!==n?renameRef("articles",old,n):saveRefs()))toast("Сохранено");}
+    else{R().articles.push({name:n,kind:kd,nature:nt});if(await saveRefs())toast("Статья добавлена");}
+  },a?"Сохранить":"Добавить");
+}
+function directionModal(i){
+  const d=i==null?null:R().directions[i];
+  modal(d?"Направление":"Новое направление",`<div class="grid2">
+    <label class="f"><span>Направление</span><input name="name" value="${esc(d?d.name:"")}"></label>
+    <label class="f"><span>Группа для P&amp;L</span><select name="group">${opt(R().groups,d?(d.group||"Без привязки"):"Без привязки")}</select></label></div>`,async(l)=>{
+    const n=val(l,"name"); if(!n){toast("Укажите название");return false;}
+    if(nsiDup(R().directions.map(x=>x.name),n,i)){toast("Такое название уже есть");return false;}
+    if(d){const old=d.name;d.name=n;d.group=val(l,"group");if(await (old!==n?renameRef("directions",old,n):saveRefs()))toast("Сохранено");}
+    else{R().directions.push({name:n,group:val(l,"group")});if(await saveRefs())toast("Направление добавлено");}
+  },d?"Сохранить":"Добавить");
+}
+function listModal(k,i){
+  const c=NSI_LIST[k],arr=c.arr(),cur=i==null?null:arr[i];
+  modal(cur==null?c.newTitle:c.title,`<label class="f"><span>Наименование</span><input name="name" value="${esc(cur||"")}"></label>`,async(l)=>{
+    const n=val(l,"name"); if(!n){toast("Укажите наименование");return false;}
+    if(nsiDup(arr,n,i)){toast("Такое название уже есть");return false;}
+    if(cur!=null){arr[i]=n;if(await (cur!==n?renameRef(k,cur,n):saveRefs()))toast("Сохранено");}
+    else{arr.push(n);if(await saveRefs())toast(c.added);}
+  },cur==null?"Добавить":"Сохранить");
 }
 
 /* ============================ модальные окна ============================ */
@@ -1307,14 +1509,10 @@ function bind(root){
         case "del-visit":if(confirm("Отменить списание занятия?"))delVisit(id,+i);break;
         case "add-teacher":newTeacher();break;
         case "edit-teacher":editTeacher(id);break;
-        case "del-teacher":if(confirm("Удалить педагога?")){S.teachers=S.teachers.filter(x=>x.id!==id);await saveTeachers();render();}break;
+        case "del-teacher":if(confirm("Удалить педагога?")){S.teachers=S.teachers.filter(x=>x.id!==id);if(await saveTeachers())toast("Удалено");render();}break;
         case "add-tariff":newTariff();break;
         case "edit-tariff":editTariff(id);break;
-        case "del-tariff":if(confirm("Удалить тариф?")){S.tariffs=S.tariffs.filter(x=>x.id!==id);await saveTariffs();render();}break;
-        case "add-article":addArticle();break;
-        case "del-article":if(confirm("Удалить статью?")){R().articles.splice(+i,1);await saveRefs();render();}break;
-        case "add-direction":addDirection();break;
-        case "del-direction":if(confirm("Удалить направление?")){R().directions.splice(+i,1);await saveRefs();render();}break;
+        case "del-tariff":if(confirm("Удалить тариф?")){S.tariffs=S.tariffs.filter(x=>x.id!==id);if(await saveTariffs())toast("Удалено");render();}break;
         case "save-par":savePar(root);break;
         case "add-member":inviteMember();break;
         case "del-member":if(confirm("Закрыть доступ для "+id+"? Человек больше не сможет открыть базу центра.")){ if(await removeMember(id)){toast("Доступ закрыт");render();} }break;
@@ -1322,28 +1520,9 @@ function bind(root){
     };
   });
 }
-function addArticle(){
-  modal("Новая статья",`<div class="grid2">
-   <label class="f"><span>Наименование</span><input name="name" placeholder="Абонемент на 6 занятий"></label>
-   <label class="f"><span>Тип</span><select name="kind"><option value="income">Доход</option><option value="expense">Расход</option></select></label>
-   <label class="f"><span>Характер расхода</span><select name="nature"><option value="var">Переменный</option><option value="const">Постоянный</option></select></label>
-  </div>`,async(l)=>{
-    const n=val(l,"name"); if(!n){toast("Укажите наименование");return false;}
-    R().articles.push({name:n,kind:val(l,"kind"),nature:val(l,"nature")}); await saveRefs(); toast("Статья добавлена");
-  },"Добавить");
-}
-function addDirection(){
-  modal("Новое направление",`<div class="grid2">
-   <label class="f"><span>Направление</span><input name="name" placeholder="Робототехника"></label>
-   <label class="f"><span>Группа для P&L</span><select name="group">${opt(R().groups)}</select></label></div>`,async(l)=>{
-    const n=val(l,"name"); if(!n){toast("Укажите название");return false;}
-    R().directions.push({name:n,group:val(l,"group")}); await saveRefs(); toast("Направление добавлено");
-  },"Добавить");
-}
 async function savePar(root){
   const g=(n)=>root.querySelector(`[data-par="${n}"]`).value;
   R().usn=parseNum(g("usn")); R().fixedFee=parseNum(g("fixedFee"));
-  R().sources=g("sources").split(",").map(s=>s.trim()).filter(Boolean);
   await saveRefs(); toast("Параметры сохранены"); render();
 }
 
