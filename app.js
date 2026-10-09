@@ -1068,10 +1068,9 @@ function newAbon(preStudent){
      <label class="f"><span>Ученик</span><select name="studentId">${optId(S.students,preStudent)}</select></label>
      <label class="f"><span>Тариф</span><select name="tariffId">${optId(S.tariffs)}</select></label>
    </div>
-   <div class="grid3">
+   <div class="grid2">
      <label class="f"><span>Количество занятий</span><input type="number" name="lessons" value="8"></label>
      <label class="f"><span>Сумма, ₽</span><input type="number" name="price" value=""></label>
-     <label class="f"><span>Источник оплаты</span><select name="source">${opt(r.sources)}</select></label>
    </div>
    <div class="grid3">
      <label class="f"><span>Направление</span><select name="direction">${opt(r.directions.map(d=>d.name))}</select></label>
@@ -1094,7 +1093,7 @@ function newAbon(preStudent){
     if(chk(l,"pay")&&price){
       const art=(R().articles.find(x=>x.name===a.name)||{}).name||(R().articles.find(x=>x.kind==="income")||{}).name||"Прочие доходы";
       const o={id:uid("op"),date:a.date,type:"income",amount:price,article:art,direction:a.direction,subject:a.subject,
-        source:val(l,"source"),studentId:sid,teacherId:a.teacherId,note:a.name,abonId:a.id,fisc:false};
+        source:"",studentId:sid,teacherId:a.teacherId,note:a.name,abonId:a.id,fisc:false};
       pushOp(o);
     }
     await saveMonth(m); toast("Абонемент продан");
