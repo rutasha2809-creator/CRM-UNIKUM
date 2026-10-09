@@ -117,12 +117,6 @@ async function doLogin(email, password) {
   if (error) { showAuth(error.message === "Invalid login credentials" ? "Неверная почта или пароль." : error.message); return; }
   await afterLogin(email);
 }
-async function doSignup(email, password) {
-  const { data, error } = await SB.auth.signUp({ email, password });
-  if (error) { showAuth(error.message); return; }
-  if (!data.session) { showAuth("Аккаунт создан. Подтвердите адрес по письму, затем войдите."); return; }
-  await afterLogin(email);
-}
 async function doLogout() {
   if (!confirm("Выйти из программы?")) return;
   await SB.auth.signOut(); location.reload();
@@ -904,8 +898,8 @@ function viewNsi(v){
       <div class="pad" style="padding-top:0"><button class="btn primary" data-act="save-par">Сохранить параметры</button></div>
     </div>
 
-    <div class="panel"><header><h2>Доступ к программе</h2><button class="btn mini primary" data-act="add-member">Пригласить</button></header>
-      <div class="pad hint">Работать с базой центра могут только адреса из этого списка. Человек сам создаёт пароль при первом входе.</div>
+    <div class="panel"><header><h2>Доступ к программе</h2></header>
+      <div class="pad hint">Работать с базой центра могут только адреса из этого списка.</div>
       <div class="tw"><table><thead><tr><th>Почта</th><th>Имя</th><th>Роль</th><th></th></tr></thead><tbody>
       ${MEMBERS.map(m=>`<tr><td>${esc(m.email)}${m.email===ME?' <span class="chip mut">это вы</span>':""}</td><td>${esc(m.name||"")}</td>
       <td>${m.role==="owner"?"владелец":"пользователь"}</td>
@@ -1377,9 +1371,8 @@ document.getElementById("auth-form").onsubmit=async(e)=>{
   const pass=document.getElementById("auth-pass").value;
   if(!email||!pass){document.getElementById("auth-msg").textContent="Введите почту и пароль.";document.getElementById("auth-msg").style.display="block";return;}
   document.getElementById("auth-msg").style.display="none";
-  if(e.submitter&&e.submitter.id==="auth-signup") await doSignup(email,pass); else await doLogin(email,pass);
+  await doLogin(email,pass);
 };
-document.getElementById("auth-signup").onclick=(e)=>{ e.target.form.requestSubmit(e.target); };
 
 render();
 connect();
