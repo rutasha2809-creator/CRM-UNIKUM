@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Уникум · Учёт центра</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="auth" id="auth" style="display:none">
+  <form class="auth-card" id="auth-form">
+    <div class="auth-brand"><b>Уникум</b><span>учебный центр</span></div>
+    <h1>Вход в программу учёта</h1>
+    <p class="hint">Доступ открыт только для приглашённых адресов. Первый раз — «Создать аккаунт»: почта та же, пароль придумываете сами.</p>
+    <label class="f"><span>Почта</span><input id="auth-email" type="email" autocomplete="username" required></label>
+    <label class="f"><span>Пароль</span><input id="auth-pass" type="password" autocomplete="current-password" required></label>
+    <div id="auth-msg" class="warnbox" style="display:none"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="submit" class="btn" id="auth-signup">Создать аккаунт</button>
+      <button type="submit" class="btn primary" id="auth-login">Войти</button>
+    </div>
+  </form>
+</div>
+
+<div class="app" style="display:none">
+  <nav class="rail">
+    <div class="brand"><b>Уникум</b><span>учебный центр</span></div>
+    <button class="navbtn" data-nav="dash">Дашборд</button>
+    <button class="navbtn" data-nav="students">Ученики <small id="cnt-students"></small></button>
+    <button class="navbtn" data-nav="lessons">Занятия <small id="cnt-lessons"></small></button>
+    <button class="navbtn" data-nav="abon">Абонементы <small id="cnt-abon"></small></button>
+    <button class="navbtn" data-nav="ops">Операции <small id="cnt-ops"></small></button>
+    <button class="navbtn" data-nav="reports">Отчёты</button>
+    <button class="navbtn" data-nav="nsi">Справочники</button>
+    <div class="rail-foot">
+      <span id="dbstate">Подключение…</span>
+      <button class="btn mini ghost" id="btn-reload">Обновить данные</button>
+      <button class="btn mini ghost" id="btn-backup">Резервная копия JSON</button>
+      <button class="btn mini ghost" id="btn-logout">Выйти</button>
+    </div>
+  </nav>
+  <main id="view"></main>
+</div>
+<div id="layer"></div>
+
+<script src="vendor/supabase.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
