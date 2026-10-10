@@ -3,17 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Уникум · Учёт центра</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="styles.css?v=20261011-3">
+<title>Уникум · CRM учебного центра</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230E7C86'/><text x='16' y='22' font-size='16' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'>У</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css?v=20261011-4">
 </head>
 <body>
 
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+  <symbol id="i-students" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 4.3a3.2 3.2 0 0 1 0 7.4M18 14.8c2 .7 3 2.6 3 5.2"/></symbol>
+  <symbol id="i-lessons" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><path d="m9 14 2 2 4-4"/></symbol>
+  <symbol id="i-abon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6.5 14.5h4"/></symbol>
+  <symbol id="i-ops" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13l-3-3M20 17H7l3 3"/></symbol>
+  <symbol id="i-reports" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-nsi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5C4 4 5.8 3 8 3s4 1 4 2.5V19c0-1.5-1.8-2.5-4-2.5s-4 1-4 2.5zM20 5.5C20 4 18.2 3 16 3s-4 1-4 2.5V19c0-1.5 1.8-2.5 4-2.5s4 1 4 2.5z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4.5 4.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-1.3 5.5"/><path d="M20 4.5V11h-6"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11M8 10.5l4 3.5 4-3.5M4 18.5v1.5h16v-1.5"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H14"/><path d="M10 8l-4 4 4 4M6 12h10"/></symbol>
+</svg>
+
 <div class="auth" id="auth" style="display:none">
   <form class="auth-card" id="auth-form">
-    <div class="auth-brand"><b>Уникум</b><span>учебный центр</span></div>
-    <h1>Вход в программу учёта</h1>
+    <div class="auth-brand"><span class="mark">У</span><span class="bt"><b>Уникум</b><i>учебный центр</i></span></div>
+    <h1>Вход в программу</h1>
     <p class="hint">Доступ открыт только для приглашённых адресов.</p>
     <label class="f"><span>Почта</span><input id="auth-email" type="email" autocomplete="username" required></label>
     <label class="f"><span>Пароль</span><input id="auth-pass" type="password" autocomplete="current-password" required></label>
@@ -26,28 +41,54 @@
 
 <div class="app" style="display:none">
   <nav class="rail">
-    <div class="brand"><b>Уникум</b><span>учебный центр</span></div>
-    <button class="navbtn" data-nav="dash">Дашборд</button>
-    <button class="navbtn" data-nav="students">Ученики <small id="cnt-students"></small></button>
-    <button class="navbtn" data-nav="lessons">Занятия <small id="cnt-lessons"></small></button>
-    <button class="navbtn" data-nav="abon">Абонементы <small id="cnt-abon"></small></button>
-    <button class="navbtn" data-nav="ops">Операции <small id="cnt-ops"></small></button>
-    <button class="navbtn" data-nav="reports">Отчёты</button>
-    <button class="navbtn" data-nav="nsi">Справочники</button>
+    <div class="brand"><span class="mark">У</span><span class="bt"><b>Уникум</b><i>учебный центр</i></span></div>
+
+    <div class="rail-sec">Работа с учениками</div>
+    <button class="navbtn" data-nav="dash"><svg><use href="#i-dash"/></svg>Дашборд</button>
+    <button class="navbtn" data-nav="students"><svg><use href="#i-students"/></svg>Ученики <small id="cnt-students"></small></button>
+    <button class="navbtn" data-nav="lessons"><svg><use href="#i-lessons"/></svg>Расписание <small id="cnt-lessons"></small></button>
+    <button class="navbtn" data-nav="abon"><svg><use href="#i-abon"/></svg>Абонементы <small id="cnt-abon"></small></button>
+
+    <div class="rail-sec">Деньги</div>
+    <button class="navbtn" data-nav="ops"><svg><use href="#i-ops"/></svg>Операции <small id="cnt-ops"></small></button>
+    <button class="navbtn" data-nav="reports"><svg><use href="#i-reports"/></svg>Отчёты</button>
+
+    <div class="rail-sec">Настройка</div>
+    <button class="navbtn" data-nav="nsi"><svg><use href="#i-nsi"/></svg>Справочники</button>
+
     <div class="rail-foot">
-      <span id="dbstate">Подключение…</span>
-      <button class="btn mini ghost" id="btn-reload">Обновить данные</button>
-      <button class="btn mini ghost" id="btn-backup">Резервная копия JSON</button>
-      <button class="btn mini ghost" id="btn-logout">Выйти</button>
+      <div class="who"><span class="dot" id="dbdot"></span><span id="dbstate">Подключение…</span></div>
+      <button class="railbtn" id="btn-reload"><svg><use href="#i-refresh"/></svg>Обновить данные</button>
+      <button class="railbtn" id="btn-backup"><svg><use href="#i-save"/></svg>Резервная копия</button>
+      <button class="railbtn" id="btn-logout"><svg><use href="#i-out"/></svg>Выйти</button>
     </div>
   </nav>
-  <main id="view"></main>
+
+  <div class="work">
+    <header class="topbar">
+      <div class="gsearch">
+        <svg><use href="#i-search"/></svg>
+        <input id="g-q" type="search" placeholder="Поиск: ученик, абонемент, операция, педагог" autocomplete="off" aria-label="Поиск по базе">
+        <div class="gres" id="g-res" style="display:none"></div>
+      </div>
+      <div class="menuwrap" style="margin-left:auto">
+        <button class="btn primary" id="btn-create"><svg><use href="#i-plus"/></svg>Создать</button>
+        <div class="menu" id="create-menu" style="display:none">
+          <button data-create="op"><svg><use href="#i-ops"/></svg>Операция</button>
+          <button data-create="abon"><svg><use href="#i-abon"/></svg>Продажа абонемента</button>
+          <button data-create="student"><svg><use href="#i-students"/></svg>Ученик</button>
+          <button data-create="lesson"><svg><use href="#i-lessons"/></svg>Индивидуальное занятие</button>
+        </div>
+      </div>
+    </header>
+    <main id="view"></main>
+  </div>
 </div>
 <div id="layer"></div>
 
 <script src="vendor/supabase.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
-<script src="config.js?v=20261011-3"></script>
-<script src="app.js?v=20261011-3"></script>
+<script src="config.js?v=20261011-4"></script>
+<script src="app.js?v=20261011-4"></script>
 </body>
 </html>

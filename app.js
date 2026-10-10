@@ -20,7 +20,7 @@ const S={
   lessons:{},  // "2026-09" -> [проведённые занятия]
   months:[],   // индекс месяцев с данными
   nav:"dash", db:null, ready:false, year:new Date().getFullYear(),
-  opFilter:{month:"", type:"", q:""}, repTab:"bdds", lesDate:localISO(new Date()), lesTab:"journal"
+  stQ:"", opFilter:{month:"", type:"", q:""}, repTab:"bdds", lesDate:localISO(new Date()), lesTab:"week"
 };
 
 const DEFAULT_REFS={
@@ -301,6 +301,92 @@ function findAbon(id){ for(const m in S.abon){const a=S.abon[m].find(x=>x.id===i
 /* ============================ навигация ============================ */
 document.querySelectorAll("[data-nav]").forEach(b=>b.onclick=()=>{S.nav=b.dataset.nav;render();});
 document.getElementById("btn-backup").onclick=backup;
+const plural=(n,a)=>{const m=Math.abs(n)%100,d=m%10;return n+" "+(m>10&&m<20?a[2]:d===1?a[0]:d>1&&d<5?a[1]:a[2]);};
+const ico=(n,cls)=>`<svg class="${cls||""}"><use href="#i-${n}"/></svg>`;
+
+/* --- меню «Создать» --- */
+(function(){
+  const btn=document.getElementById("btn-create"),menu=document.getElementById("create-menu");
+  if(!btn)return;
+  const hide=()=>{menu.style.display="none";};
+  btn.onclick=(e)=>{e.stopPropagation();menu.style.display=menu.style.display==="none"?"":"none";};
+  document.addEventListener("click",hide);
+  menu.onclick=(e)=>e.stopPropagation();
+  menu.querySelectorAll("[data-create]").forEach(b=>b.onclick=()=>{
+    hide();
+    ({op:()=>newOp(),abon:()=>newAbon(),student:()=>newStudent(),lesson:()=>singleLesson()})[b.dataset.create]();
+  });
+})();
+
+/* --- поиск по всей базе --- */
+function globalHits(q){
+  q=q.trim().toLowerCase(); if(q.length<2)return [];
+  const has=(...xs)=>xs.filter(Boolean).join(" ").toLowerCase().includes(q);
+  const out=[];
+  S.students.filter(s=>has(s.name,s.parent,s.phone)).slice(0,6).forEach(s=>{
+    const ab=allAbon().filter(a=>a.studentId===s.id),left=ab.reduce((n,a)=>n+(abLive(a)?abLeft(a):0),0);
+    out.push({g:"Ученики",t:s.name,m:left?left+" зан. в остатке":(s.direction||""),run:()=>studentCard(s.id)});
+  });
+  allAbon().filter(a=>has(a.name,studentName(a.studentId),a.direction,a.subject)).slice(0,6).forEach(a=>
+    out.push({g:"Абонементы",t:studentName(a.studentId)+" · "+a.name,m:abState(a).t,run:()=>abonCard(a.id)}));
+  S.teachers.filter(t=>has(t.name,t.subject,t.phone)).slice(0,4).forEach(t=>
+    out.push({g:"Педагоги",t:t.name,m:t.subject||"",run:()=>{S.nav="nsi";S.nsiTab="teachers";S.nsiGlobal=null;render();}}));
+  tplList(true).filter(t=>has(t.name,t.direction,t.subject)).slice(0,4).forEach(t=>
+    out.push({g:"Тарифы",t:t.name,m:money(t.price)+" ₽",run:()=>newAbon("",t.id)}));
+  allOps().filter(o=>has(o.article,o.note,studentName(o.studentId),o.source)).sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,6).forEach(o=>
+    out.push({g:"Операции",t:o.article+(o.note?" · "+o.note:""),m:o.date+" · "+(o.type==="income"?"+":"−")+money(o.amount),run:()=>editOp(o.id)}));
+  return out;
+}
+(function(){
+  const inp=document.getElementById("g-q"),box=document.getElementById("g-res");
+  if(!inp)return;
+  let hits=[],cur=-1;
+  const close=()=>{box.style.display="none";cur=-1;};
+  const paint=()=>{
+    hits=globalHits(inp.value);
+    if(!hits.length){box.innerHTML=inp.value.trim().length>=2?`<div class="gk">Ничего не нашлось</div>`:"";box.style.display=inp.value.trim().length>=2?"":"none";return;}
+    let last="",h="";
+    hits.forEach((x,i)=>{
+      if(x.g!==last){h+=`<div class="gk">${x.g}</div>`;last=x.g;}
+      h+=`<button data-i="${i}" class="${i===cur?"cur":""}">${esc(x.t)}<span class="gm">${esc(x.m||"")}</span></button>`;
+    });
+    box.innerHTML=h;box.style.display="";
+    box.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{close();inp.value="";hits[+b.dataset.i].run();});
+  };
+  inp.oninput=paint;
+  inp.onfocus=()=>{if(inp.value.trim().length>=2)paint();};
+  inp.onkeydown=(e)=>{
+    if(e.key==="Escape"){close();inp.blur();return;}
+    if(!hits.length)return;
+    if(e.key==="ArrowDown"||e.key==="ArrowUp"){e.preventDefault();cur=(cur+(e.key==="ArrowDown"?1:hits.length-1))%hits.length;paint();}
+    else if(e.key==="Enter"&&cur>=0){e.preventDefault();const r=hits[cur].run;close();inp.value="";r();}
+  };
+  document.addEventListener("click",(e)=>{if(!e.target.closest(".gsearch"))close();});
+  document.addEventListener("keydown",(e)=>{
+    if((e.ctrlKey||e.metaKey)&&e.key==="k"){e.preventDefault();inp.focus();inp.select();}
+  });
+})();
+
+/* --- сортировка таблиц по клику на заголовок --- */
+const sortKey=(td)=>{
+  const raw=(td.dataset.v!==undefined?td.dataset.v:td.textContent).trim();
+  const n=raw.replace(/\s|\u00a0/g,"").replace("−","-").replace(",",".");
+  return /^-?\d+(\.\d+)?$/.test(n)?+n:raw.toLowerCase();
+};
+function bindSort(root){
+  root.querySelectorAll("th[data-sort]").forEach(th=>{
+    th.onclick=()=>{
+      const tb=th.closest("table").tBodies[0]; if(!tb)return;
+      const i=[...th.parentNode.children].indexOf(th);
+      const dir=th.classList.contains("asc")?-1:1;
+      [...th.parentNode.children].forEach(x=>x.classList.remove("asc","desc"));
+      th.classList.add(dir>0?"asc":"desc");
+      [...tb.rows].map(r=>[sortKey(r.cells[i]),r])
+        .sort((a,b)=>(typeof a[0]==="number"&&typeof b[0]==="number"?a[0]-b[0]:String(a[0]).localeCompare(String(b[0]),"ru"))*dir)
+        .forEach(([,r])=>tb.appendChild(r));
+    };
+  });
+}
 
 function render(){
   document.querySelectorAll("[data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===S.nav));
@@ -311,78 +397,121 @@ function render(){
   const v=document.getElementById("view");
   if(!S.ready){ v.innerHTML='<div class="panel"><div class="empty">Загружаю данные центра…</div></div>'; return; }
   ({dash:viewDash,students:viewStudents,lessons:viewLessons,abon:viewAbon,ops:viewOps,reports:viewReports,nsi:viewNsi}[S.nav])(v);
+  bindSort(v);
 }
 
 /* ============================ дашборд ============================ */
+const pct=(a,b)=>b?Math.round((a-b)/Math.abs(b)*100):null;
+function deltaChip(a,b,inverse){
+  const d=pct(a,b); if(d===null||!isFinite(d))return `<span class="delta flat">нет данных за прошлый месяц</span>`;
+  const good=inverse?d<=0:d>=0;
+  const cls=d===0?"flat":(good?"up":"down");
+  return `<span class="delta ${cls}">${d>0?"▲":d<0?"▼":"="} ${Math.abs(d)}% к прошлому месяцу</span>`;
+}
 function viewDash(v){
   const y=S.year, ops=opsOfYear(y);
   const inc=ops.filter(o=>o.type==="income").reduce((s,o)=>s+o.amount,0);
   const exp=ops.filter(o=>o.type==="expense").reduce((s,o)=>s+o.amount,0);
   const live=allAbon().filter(a=>abLive(a));
   const lessonsLeft=live.reduce((s,a)=>s+abLeft(a),0);
-  const debt=live.reduce((s,a)=>s+abDebtSum(a),0);
-  const owed=allAbon().reduce((s,a)=>s+abOwed(a),0), owedN=allAbon().filter(a=>abOwed(a)>0).length;
-  const m=today().slice(0,7);
-  const visitsMonth=allAbon().reduce((s,a)=>s+(a.visits||[]).filter(x=>ym(x.date)===m).length,0);
+  const debt=allAbon().reduce((s,a)=>s+abDebtSum(a),0);
+  const owedList=allAbon().filter(a=>abOwed(a)>0).sort((a,b)=>abOwed(b)-abOwed(a));
+  const owed=owedList.reduce((s,a)=>s+abOwed(a),0);
+  const m=today().slice(0,7), pm=ym(addDays(m+"-01",-1));
+  const mOps=(k,t)=>(S.ops[k]||[]).filter(o=>o.type===t).reduce((s,o)=>s+o.amount,0);
+  const visitsIn=(k)=>allAbon().reduce((s,a)=>s+(a.visits||[]).filter(x=>ym(x.date)===k).length,0);
   const byMonth=Array.from({length:12},(_,i)=>{
     const k=y+"-"+String(i+1).padStart(2,"0");
-    const list=S.ops[k]||[];
-    return {i,inc:list.filter(o=>o.type==="income").reduce((s,o)=>s+o.amount,0),exp:list.filter(o=>o.type==="expense").reduce((s,o)=>s+o.amount,0)};
+    return {i,k,inc:mOps(k,"income"),exp:mOps(k,"expense")};
   });
-  const low=live.filter(a=>abLeft(a)<=2).sort((a,b)=>abLeft(a)-abLeft(b));
+
+  /* точки внимания */
+  const attn=[];
+  allAbon().filter(a=>abExpired(a)).sort((a,b)=>(a.until||"").localeCompare(b.until||"")).slice(0,4).forEach(a=>
+    attn.push({ic:"n",t:studentName(a.studentId)||a.name,d:`Срок истёк ${a.until}, не отработано ${abFree(a)} зан.`,b:"Продлить",act:"abon-extend",id:a.id}));
+  owedList.slice(0,4).forEach(a=>
+    attn.push({ic:"n",t:studentName(a.studentId)||a.name,d:`Долг по абонементу «${a.name}» — ${money(abOwed(a))} ₽`,b:"Принять оплату",act:"abon-pay",id:a.id}));
+  live.filter(a=>abLeft(a)<=2).sort((a,b)=>abLeft(a)-abLeft(b)).slice(0,5).forEach(a=>
+    attn.push({ic:"w",t:studentName(a.studentId)||a.name,d:`Осталось ${abLeft(a)} из ${a.lessons} зан. — пора продлевать`,b:"Продать ещё",act:"abon-renew",id:a.id}));
+  allAbon().filter(a=>abPending(a)>0).slice(0,4).forEach(a=>
+    attn.push({ic:"a",t:studentName(a.studentId)||a.name,d:`Перенос ${abPending(a)} зан. — учтётся в следующем абонементе`,b:"Карточка",act:"abon-card",id:a.id}));
+
+  const d=today(), wd=wdOf(d);
+  const todayGroups=S.groups.filter(g=>(g.days||[]).includes(wd));
+  const doneToday=new Set(lessonsOn(d).map(l=>l.groupId).filter(Boolean));
 
   v.innerHTML=`
   <div class="head">
-    <div><h1>Финансовая картина центра</h1><p>Денежный поток, остатки абонементов и точки внимания — по данным ${y} года.</p></div>
-    <div class="tools">${yearSelect()}<button class="btn primary" data-act="new-op">Новая операция</button></div>
+    <div><h1>Дашборд</h1><p>Деньги, абонементы и точки внимания за ${y} год.</p></div>
+    <div class="tools">${yearSelect()}<button class="btn" data-nav2="reports">Все отчёты</button><button class="btn primary" data-act="new-op">Новая операция</button></div>
   </div>
   <div class="stack">
-    <div class="stats">
-      <div class="stat"><span class="k">Поступления</span><span class="v pos num">${money(inc)}</span><span class="n">${y} год, касса</span></div>
-      <div class="stat"><span class="k">Платежи</span><span class="v neg num">${money(exp)}</span><span class="n">${y} год, касса</span></div>
-      <div class="stat"><span class="k">Сальдо</span><span class="v num ${inc-exp>=0?"pos":"neg"}">${money(inc-exp)}</span><span class="n">поступления минус платежи</span></div>
-      <div class="stat"><span class="k">Занятий не отработано</span><span class="v num">${lessonsLeft}</span><span class="n">${live.length} действующих абонементов</span></div>
-      <div class="stat"><span class="k">Обязательства</span><span class="v num">${money(debt)}</span><span class="n">оплачено, но не проведено</span></div>
-      <div class="stat"><span class="k">Занятий в этом месяце</span><span class="v num">${visitsMonth}</span><span class="n">списано с абонементов</span></div>
-      ${owedN?`<div class="stat"><span class="k">Не оплачено учениками</span><span class="v num neg">${money(owed)}</span><span class="n">абонементов с долгом: ${owedN}</span></div>`:""}
+    <div class="stats" style="--cols:${statCols(8)}">
+      <div class="stat"><span class="k">Поступления</span><span class="v pos num">${money(inc)}</span>${deltaChip(mOps(m,"income"),mOps(pm,"income"))}</div>
+      <div class="stat"><span class="k">Платежи</span><span class="v neg num">${money(exp)}</span>${deltaChip(mOps(m,"expense"),mOps(pm,"expense"),true)}</div>
+      <div class="stat"><span class="k">Сальдо за год</span><span class="v num ${inc-exp>=0?"pos":"neg"}">${money(inc-exp)}</span><span class="n">поступления минус платежи</span></div>
+      <div class="stat"><span class="k">Занятий в месяце</span><span class="v num">${visitsIn(m)}</span>${deltaChip(visitsIn(m),visitsIn(pm))}</div>
+      <div class="stat"><span class="k">Не отработано</span><span class="v num">${lessonsLeft} зан.</span><span class="n">${live.length} действующих абонементов</span></div>
+      <div class="stat"><span class="k">Обязательства</span><span class="v num">${money(debt)}</span><span class="n">аванс к отработке</span></div>
+      <div class="stat"><span class="k">Долг учеников</span><span class="v num ${owed?"neg":""}">${money(owed)}</span><span class="n">${owedN(owedList)}</span></div>
+      <div class="stat"><span class="k">Занятий сегодня</span><span class="v num">${todayGroups.length}</span><span class="n">${doneToday.size} уже проведено</span></div>
     </div>
 
     <div class="panel">
-      <header><h2>Поступления и платежи по месяцам</h2><span class="sub">${y}</span></header>
+      <header><h2>Поступления и платежи</h2><span class="sub">${y} год, по кассе</span></header>
       <div class="pad">${barChart(byMonth)}</div>
     </div>
 
     <div class="grid2" style="align-items:start">
       <div class="panel">
-        <header><h2>Абонементы на исходе</h2><span class="sub">осталось 2 занятия и меньше</span></header>
-        ${low.length?`<div class="tw"><table><thead><tr><th>Ученик</th><th>Абонемент</th><th class="n">Остаток</th><th></th></tr></thead><tbody>
-          ${low.slice(0,8).map(a=>`<tr><td>${esc(studentName(a.studentId))||"—"}</td><td>${esc(a.name)}<div class="hint">${esc(a.direction||"")}</div></td>
-          <td class="n"><span class="chip ${abLeft(a)?"warn":"out"}">${abLeft(a)} из ${a.lessons}</span></td>
-          <td class="n"><button class="btn mini" data-act="visit" data-id="${a.id}">Списать</button></td></tr>`).join("")}
-        </tbody></table></div>`:`<div class="empty">Все абонементы с запасом занятий.</div>`}
+        <header><h2>Требует внимания</h2><span class="sub">${attn.length?attn.length+" записей":"всё в порядке"}</span></header>
+        ${attn.length?`<div class="attn">${attn.slice(0,9).map(x=>`
+          <div class="attn-row">
+            <span class="ic ${x.ic}">${x.ic==="n"?"!":x.ic==="w"?"•":"↻"}</span>
+            <span class="tx"><b>${esc(x.t)}</b><div>${esc(x.d)}</div></span>
+            <button class="btn mini" data-act="${x.act}" data-id="${x.id}">${x.b}</button>
+          </div>`).join("")}</div>`
+          :`<div class="empty"><b>Ничего не горит</b>Долгов, просроченных абонементов и остатков на исходе нет.</div>`}
       </div>
       <div class="panel">
-        <header><h2>Последние операции</h2><span class="sub">10 записей</span></header>
-        ${lastOpsTable(10)}
+        <header><h2>Сегодня, ${esc(WD[wd])}</h2><span class="sub">${esc(d)}</span></header>
+        ${todayGroups.length?`<div class="attn">${todayGroups.map(g=>`
+          <div class="attn-row">
+            <span class="ic a">${esc((g.time||"—").slice(0,2))}</span>
+            <span class="tx"><b>${esc(g.name)}</b><div>${esc([g.time,teacherName(g.teacherId),(g.studentIds||[]).length+" уч."].filter(Boolean).join(" · "))}</div></span>
+            ${doneToday.has(g.id)?`<span class="chip in">проведено</span>`:`<button class="btn mini primary" data-nav2="lessons">Открыть журнал</button>`}
+          </div>`).join("")}</div>`
+          :`<div class="empty"><b>На сегодня групп нет</b>Расписание задаётся во вкладке «Группы».</div>`}
       </div>
+    </div>
+
+    <div class="panel">
+      <header><h2>Последние операции</h2><span class="sub">10 записей</span><button class="btn mini" data-nav2="ops" style="margin-left:auto">Все операции</button></header>
+      ${lastOpsTable(10)}
     </div>
   </div>`;
   bind(v);
+  v.querySelectorAll("[data-nav2]").forEach(b=>b.onclick=()=>{S.nav=b.dataset.nav2;render();});
 }
+const statCols=(n)=>[4,3,2].find(c=>n%c===0)||4;
+const owedN=(list)=>list.length?`абонементов с долгом: ${list.length}`:"долгов нет";
 function barChart(rows){
   const max=Math.max(1,...rows.map(r=>Math.max(r.inc,r.exp)));
-  const W=940,H=220,pad={l:56,r:12,t:14,b:26},bw=(W-pad.l-pad.r)/12;
+  const W=960,H=210,pad={l:62,r:10,t:12,b:40},bw=(W-pad.l-pad.r)/12;
   const y=(val)=>pad.t+(H-pad.t-pad.b)*(1-val/max);
-  const ticks=[0,.5,1].map(f=>({v:max*f,y:y(max*f)}));
-  return `<div class="tw"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:640px;height:${H}px" role="img" aria-label="Поступления и платежи по месяцам">
-  ${ticks.map(t=>`<g><line x1="${pad.l}" x2="${W-pad.r}" y1="${t.y}" y2="${t.y}" stroke="var(--line-soft)"/><text x="${pad.l-8}" y="${t.y+4}" text-anchor="end" font-size="11" fill="var(--ink-3)" font-family="IBM Plex Mono,monospace">${money(t.v)}</text></g>`).join("")}
-  ${rows.map(r=>{const x=pad.l+r.i*bw;const h1=Math.max(0,y(0)-y(r.inc)),h2=Math.max(0,y(0)-y(r.exp));return `
-    <rect x="${x+bw*0.16}" y="${y(r.inc)}" width="${bw*0.30}" height="${h1}" fill="var(--accent)" rx="2"/>
-    <rect x="${x+bw*0.52}" y="${y(r.exp)}" width="${bw*0.30}" height="${h2}" fill="var(--neg)" opacity=".75" rx="2"/>
-    <text x="${x+bw/2}" y="${H-8}" text-anchor="middle" font-size="11" fill="var(--ink-3)">${MON_SHORT[r.i]}</text>`;}).join("")}
+  const ticks=[0,.25,.5,.75,1].map(f=>({v:max*f,y:y(max*f)}));
+  const cur=ym(today());
+  return `<div class="tw"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:620px;height:${H}px" role="img" aria-label="Поступления и платежи по месяцам">
+  ${ticks.map(t=>`<g><line x1="${pad.l}" x2="${W-pad.r}" y1="${t.y}" y2="${t.y}" stroke="var(--line-soft)"/><text x="${pad.l-8}" y="${t.y+4}" text-anchor="end" font-size="10.5" fill="var(--ink-3)" font-family="IBM Plex Mono,monospace">${money(t.v)}</text></g>`).join("")}
+  ${rows.map(r=>{const x=pad.l+r.i*bw,h1=Math.max(0,y(0)-y(r.inc)),h2=Math.max(0,y(0)-y(r.exp));return `<g>
+    ${r.k===cur?`<rect x="${x+1}" y="${pad.t}" width="${bw-2}" height="${y(0)-pad.t}" fill="var(--surface-2)" rx="4"/>`:""}
+    <rect x="${x+bw*0.17}" y="${y(r.inc)}" width="${bw*0.29}" height="${h1}" fill="var(--accent)" rx="2"><title>${MON_SHORT[r.i]}: поступления ${money(r.inc)} ₽</title></rect>
+    <rect x="${x+bw*0.52}" y="${y(r.exp)}" width="${bw*0.29}" height="${h2}" fill="var(--neg)" opacity=".8" rx="2"><title>${MON_SHORT[r.i]}: платежи ${money(r.exp)} ₽</title></rect>
+    <text x="${x+bw/2}" y="${H-24}" text-anchor="middle" font-size="11" fill="${r.k===cur?"var(--ink)":"var(--ink-3)"}" font-weight="${r.k===cur?600:400}">${MON_SHORT[r.i]}</text>
+    <text x="${x+bw/2}" y="${H-10}" text-anchor="middle" font-size="10" fill="var(--ink-3)" font-family="IBM Plex Mono,monospace">${r.inc||r.exp?money(r.inc-r.exp):""}</text></g>`;}).join("")}
   <line x1="${pad.l}" x2="${W-pad.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)"/>
   </svg></div>
-  <div class="row" style="gap:16px;margin-top:6px"><span class="hint"><span style="display:inline-block;width:9px;height:9px;background:var(--accent);border-radius:2px"></span> поступления</span><span class="hint"><span style="display:inline-block;width:9px;height:9px;background:var(--neg);opacity:.75;border-radius:2px"></span> платежи</span></div>`;
+  <div class="row" style="gap:16px;margin-top:4px"><span class="hint"><span style="display:inline-block;width:9px;height:9px;background:var(--accent);border-radius:2px"></span> поступления</span><span class="hint"><span style="display:inline-block;width:9px;height:9px;background:var(--neg);opacity:.8;border-radius:2px"></span> платежи</span><span class="hint">под месяцем — сальдо</span></div>`;
 }
 function lastOpsTable(n){
   const rows=allOps().slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).slice(0,n);
@@ -399,33 +528,56 @@ function yearSelect(){
 }
 
 /* ============================ ученики ============================ */
+const initials=(n)=>(n||"?").trim().split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase();
+const avaCls=(n)=>["","g2","g3","g4"][[...(n||"?")].reduce((a,c)=>a+c.charCodeAt(0),0)%4];
+const ava=(n)=>`<span class="ava ${avaCls(n)}">${esc(initials(n))}</span>`;
 function viewStudents(v){
   const archN=S.students.filter(s=>s.archived).length;
-  const rows=S.students.filter(s=>showArch("students")||!s.archived).sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+  const q=(S.stQ||"").trim().toLowerCase();
+  const all=S.students.filter(s=>showArch("students")||!s.archived);
+  const rows=all.filter(s=>!q||[s.name,s.parent,s.phone,s.direction].filter(Boolean).join(" ").toLowerCase().includes(q))
+    .sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+  const stat=(s)=>{
+    const ab=allAbon().filter(a=>a.studentId===s.id);
+    const left=ab.reduce((n,a)=>n+(abLive(a)?abLeft(a):0),0);
+    const owe=ab.reduce((n,a)=>n+abOwed(a),0);
+    const paid=allOps().filter(o=>o.studentId===s.id&&o.type==="income").reduce((n,o)=>n+o.amount,0);
+    const lastV=ab.flatMap(a=>(a.visits||[]).map(x=>x.date)).sort().pop()||"";
+    return {ab,left,owe,paid,lastV,live:ab.filter(a=>abLive(a))};
+  };
   v.innerHTML=`
-  <div class="head"><div><h1>Ученики</h1><p>Продажа абонемента и списание занятия — прямо из строки ученика. В карточке видно все абонементы, посещения и оплаты.</p></div>
-  <div class="tools">${archN?`<button class="btn" data-act="toggle-arch" data-id="students">${showArch("students")?"Скрыть архив":"Показать архив"} (${archN})</button>`:""}<button class="btn primary" data-act="new-student">Добавить ученика</button></div></div>
+  <div class="head"><div><h1>Ученики</h1><p>Абонемент, списание занятия и карточка — прямо из строки.</p></div>
+  <div class="tools">
+    <input type="search" id="st-q" placeholder="Поиск по имени, родителю, телефону" value="${esc(S.stQ||"")}" style="width:250px" autocomplete="off">
+    ${archN?`<button class="btn" data-act="toggle-arch" data-id="students">${showArch("students")?"Скрыть архив":"Показать архив"} (${archN})</button>`:""}
+    <button class="btn primary" data-act="new-student">Добавить ученика</button></div></div>
   <div class="panel">
-    <header><h2>${rows.length} учеников</h2><span class="sub">остаток занятий считается по проведённым спискам</span></header>
-    ${rows.length?`<div class="tw"><table><thead><tr><th>Ученик</th><th>Направление</th><th>Контакт</th><th class="n">Оплачено всего</th><th class="n">Остаток занятий</th><th class="n">Абонементы</th><th></th></tr></thead><tbody>
-    ${rows.map(s=>{
-      const ab=allAbon().filter(a=>a.studentId===s.id);
-      const left=ab.reduce((n,a)=>n+(abLive(a)?abLeft(a):0),0);
-      const paid=allOps().filter(o=>o.studentId===s.id&&o.type==="income").reduce((n,o)=>n+o.amount,0);
-      const active=ab.filter(a=>abLive(a)).length;
-      return `<tr><td><b>${esc(s.name)}</b>${s.archived?' <span class="chip mut">архив</span>':""}${s.parent?`<div class="hint">${esc(s.parent)}</div>`:""}</td>
-      <td>${esc(s.direction||"—")}</td><td>${esc(s.phone||"")}</td>
-      <td class="n">${money(paid)}</td>
-      <td class="n">${left?`<span class="chip ${left<=2?"warn":"in"}">${left}</span>`:`<span class="chip mut">0</span>`}</td>
-      <td class="n">${active}</td>
-      <td class="n"><button class="btn mini primary" data-act="new-abon" data-id="${s.id}">+ Абонемент</button>
-      ${ab.some(a=>abLive(a))?`<button class="btn mini" data-act="visit" data-id="${ab.find(a=>abLive(a)).id}">Списать занятие</button>`:""}
-      <button class="btn mini" data-act="student-card" data-id="${s.id}">Карточка</button>
-      <button class="btn mini" data-act="edit-student" data-id="${s.id}">✎</button></td></tr>`;
+    <header><h2>${rows.length===all.length?plural(rows.length,["ученик","ученика","учеников"]):rows.length+" из "+all.length}</h2>
+      <span class="sub">остаток занятий — по действующим абонементам</span></header>
+    ${rows.length?`<div class="tw"><table><thead><tr>
+      <th data-sort style="min-width:196px">Ученик</th><th data-sort>Направление</th><th>Контакт</th>
+      <th class="n" data-sort>Оплачено</th><th class="n" data-sort>Долг</th><th class="n" data-sort>Остаток</th>
+      <th data-sort>Последнее занятие</th><th></th></tr></thead><tbody>
+    ${rows.map(s=>{const x=stat(s);
+      return `<tr><td data-v="${esc(s.name)}"><span class="who2">${ava(s.name)}<span style="min-width:0">
+        <b>${esc(s.name)}</b>${s.archived?' <span class="chip mut">архив</span>':""}
+        ${s.parent?`<div class="hint">${esc(s.parent)}</div>`:""}</span></span></td>
+      <td>${esc(s.direction||"—")}</td><td class="hint">${esc(s.phone||"—")}</td>
+      <td class="n">${money(x.paid)}</td>
+      <td class="n" data-v="${x.owe}">${x.owe?`<span class="chip out">${money(x.owe)}</span>`:`<span class="hint">—</span>`}</td>
+      <td class="n" data-v="${x.left}">${x.left?`<span class="chip ${x.left<=2?"warn":"in"}">${x.left} зан.</span>`:`<span class="chip mut">нет</span>`}</td>
+      <td class="n hint">${esc(x.lastV||"—")}</td>
+      <td class="act">
+        ${x.live.length?`<button class="btn mini" data-act="visit" data-id="${x.live[0].id}">Списать</button> `:""}
+        <button class="btn mini" data-act="new-abon" data-id="${s.id}">Абонемент</button>
+        <button class="btn mini" data-act="student-card" data-id="${s.id}">Карточка</button>
+        <button class="btn mini" data-act="edit-student" data-id="${s.id}">Изменить</button></td></tr>`;
     }).join("")}
-    </tbody></table></div>`:`<div class="empty">Список учеников пуст — добавьте первого.</div>`}
+    </tbody></table></div>`:`<div class="empty"><b>${all.length?"Под поиск никто не попал":"Список учеников пуст"}</b>${all.length?"Измените запрос или очистите поле поиска.":"Добавьте первого ученика — дальше можно продавать абонементы и вести занятия."}${all.length?"":`<div><button class="btn primary" data-act="new-student">Добавить ученика</button></div>`}</div>`}
   </div>`;
   bind(v);
+  const si=v.querySelector("#st-q");
+  if(si)si.oninput=()=>{S.stQ=si.value;const pos=si.selectionStart;render();const n=document.getElementById("st-q");if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch(e){}}};
 }
 
 /* ============================ занятия ============================ */
@@ -443,13 +595,18 @@ function viewLessons(v){
   const unpaid=done.reduce((s,l)=>s+l.attend.filter(a=>!a.abonId).length,0);
 
   v.innerHTML=`
-  <div class="head"><div><h1>Журнал занятий</h1><p>Отметьте присутствующих и проведите занятие — занятие спишется с абонемента каждого отмеченного ученика автоматически.</p></div>
+  <div class="head"><div><h1>Расписание</h1><p>${S.lesTab==="week"?"Неделя центра: запланированные, проведённые и отменённые занятия.":"Отметьте присутствующих и проведите занятие — оно спишется с абонемента каждого отмеченного ученика."}</p></div>
   <div class="tools">
-    <button class="tab ${S.lesTab==="journal"?"on":""}" data-les="journal">Журнал дня</button>
-    <button class="tab ${S.lesTab==="groups"?"on":""}" data-les="groups">Группы</button>
-    <button class="tab ${S.lesTab==="history"?"on":""}" data-les="history">История</button>
+    <div class="seg">
+      <button class="${S.lesTab==="week"?"on":""}" data-les="week">Неделя</button>
+      <button class="${S.lesTab==="journal"?"on":""}" data-les="journal">Журнал дня</button>
+      <button class="${S.lesTab==="groups"?"on":""}" data-les="groups">Группы</button>
+      <button class="${S.lesTab==="history"?"on":""}" data-les="history">История</button>
+    </div>
+    <button class="btn" data-act="single-lesson">Индивидуальное занятие</button>
   </div></div>`;
 
+  if(S.lesTab==="week"){ v.innerHTML+=weekBlock(); bind(v); bindLesTabs(v); bindWeek(v); return; }
   if(S.lesTab==="groups"){ v.innerHTML+=groupsBlock(); bind(v); bindLesTabs(v); return; }
   if(S.lesTab==="history"){ v.innerHTML+=historyBlock(); bind(v); bindLesTabs(v); return; }
 
@@ -466,7 +623,6 @@ function viewLessons(v){
         <span class="hint">Списано с абонементов: <b class="num">${conductedVisits}</b></span>
         ${unpaid?`<span class="chip warn">Без абонемента: ${unpaid}</span>`:""}
       </div>
-      <button class="btn" data-act="single-lesson">Индивидуальное занятие</button>
     </div></div>
 
     ${done.length?`<div class="panel"><header><h2>Проведено ${esc(d)}</h2><span class="sub">списание уже выполнено</span></header>
@@ -506,6 +662,78 @@ function viewLessons(v){
     const sync=()=>{sel.style.display=cb.checked||cb.disabled?"none":"";if(cb.checked)sel.value="";};
     cb.addEventListener("change",sync);sync();
   });
+}
+/* --- неделя --- */
+const weekStart=(iso)=>addDays(iso,-((wdOf(iso)+6)%7));
+function weekBlock(){
+  const mon=weekStart(S.lesDate), days=Array.from({length:7},(_,i)=>addDays(mon,i)), now=today();
+  const fmt=(iso)=>iso.slice(8,10)+"."+iso.slice(5,7);
+  let plan=0,held=0,canc=0;
+  const cols=days.map(d=>{
+    const wd=wdOf(d), lessons=lessonsOn(d), doneG=new Set(lessons.map(l=>l.groupId).filter(Boolean));
+    const evs=[];
+    lessons.forEach(l=>{
+      const off=l.attend.filter(a=>a.abonId).length;
+      held++;
+      evs.push({cls:"done",time:(groupById(l.groupId)||{}).time||"",nm:l.name,
+        sub:`${teacherName(l.teacherId)||"без педагога"} · списано ${off} из ${l.attend.length}`,d});
+    });
+    S.groups.filter(g=>(g.days||[]).includes(wd)&&!doneG.has(g.id)).forEach(g=>{
+      const cancelled=wholeAbsences(g.id,d).length>0;
+      if(cancelled)canc++; else plan++;
+      evs.push({cls:cancelled?"cancel":"",time:g.time||"",nm:g.name,
+        sub:cancelled?"отменено, занятия перенесены":`${teacherName(g.teacherId)||"без педагога"} · ${(g.studentIds||[]).length} уч.`,d});
+    });
+    evs.sort((a,b)=>(a.time||"99").localeCompare(b.time||"99"));
+    return {d,wd,evs};
+  });
+  return `<div class="stack">
+  <div class="panel">
+    <header>
+      <div class="row" style="align-items:center;gap:8px">
+        <button class="btn mini" data-wk="-7">← неделя</button>
+        <button class="btn mini" data-wk="0">эта неделя</button>
+        <button class="btn mini" data-wk="7">неделя →</button>
+        <b style="margin-left:6px">${fmt(mon)} — ${fmt(days[6])}</b>
+      </div>
+      <span class="sub">запланировано ${plan} · проведено ${held}${canc?" · отменено "+canc:""}</span>
+    </header>
+    <div class="week">
+      ${cols.map(c=>`<div class="wd ${c.d===now?"now":""} ${c.wd===0||c.wd===6?"off":""}">
+        <h4><span>${WD_SHORT[c.wd]}</span><b>${fmt(c.d)}</b></h4>
+        ${c.evs.length?`<div class="slots">${c.evs.map(e=>`
+          <button class="ev ${e.cls}" data-day="${e.d}">
+            ${e.time?`<span class="t">${esc(e.time)}</span>`:""}
+            <span class="nm">${esc(e.nm)}</span>
+            <span class="sub">${esc(e.sub)}</span>
+          </button>`).join("")}</div>`
+        :`<div class="none">—</div>`}
+      </div>`).join("")}
+    </div>
+  </div>
+  <div class="panel">
+    <header><h2>Занятия этой недели</h2><span class="sub">списания с абонементов</span></header>
+    ${weekTable(days)}
+  </div></div>`;
+}
+function weekTable(days){
+  const rows=days.flatMap(d=>lessonsOn(d)).sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  if(!rows.length)return `<div class="empty"><b>За эту неделю занятий ещё не проводили</b>Откройте день в журнале и отметьте присутствующих.</div>`;
+  return `<div class="tw"><table><thead><tr><th data-sort>Дата</th><th data-sort>Занятие</th><th data-sort>Педагог</th><th>Ученики</th><th class="n" data-sort>Списано</th><th class="n" data-sort>Сумма</th><th></th></tr></thead><tbody>
+  ${rows.map(l=>`<tr><td class="n">${esc(l.date)}</td><td><b>${esc(l.name)}</b><div class="hint">${esc(l.direction||"")}</div></td>
+   <td>${esc(teacherName(l.teacherId))||"—"}</td>
+   <td>${l.attend.map(a=>`<span class="chip ${a.abonId?"in":"warn"}">${esc(studentName(a.studentId))}${a.abonId?"":" · без абонемента"}</span>`).join(" ")}</td>
+   <td class="n">${l.attend.filter(a=>a.abonId).length}</td><td class="n">${money(l.attend.reduce((s,a)=>s+(a.price||0),0))}</td>
+   <td class="act"><button class="btn mini danger" data-act="cancel-lesson" data-id="${l.id}">Отменить</button></td></tr>`).join("")}
+  </tbody></table></div>`;
+}
+function bindWeek(v){
+  v.querySelectorAll("[data-wk]").forEach(b=>b.onclick=()=>{
+    const n=+b.dataset.wk;
+    S.lesDate=n?addDays(S.lesDate,n):today();
+    render();
+  });
+  v.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{S.lesDate=b.dataset.day;S.lesTab="journal";render();});
 }
 function bindLesTabs(v){ v.querySelectorAll("[data-les]").forEach(b=>b.onclick=()=>{S.lesTab=b.dataset.les;render();}); }
 
@@ -751,7 +979,7 @@ function viewAbon(v){
   <div class="tools"><button class="btn primary" data-act="new-abon">Продать абонемент</button></div></div>
   <div class="stack">
   ${catalogHTML()}
-  <div class="stats">
+  <div class="stats" style="--cols:5">
     <div class="stat"><span class="k">Действующих</span><span class="v num">${active.length}</span><span class="n">с остатком занятий и не просрочены</span></div>
     <div class="stat"><span class="k">Не отработано занятий</span><span class="v num">${active.reduce((s,a)=>s+abLeft(a),0)}</span><span class="n">по действующим абонементам</span></div>
     <div class="stat"><span class="k">Сумма обязательств</span><span class="v num">${money(active.reduce((s,a)=>s+abDebtSum(a),0))}</span><span class="n">аванс к отработке</span></div>
@@ -982,7 +1210,7 @@ function repAbon(){
 
   return matrixTable(["Показатель",...MON_SHORT,"Год"],move,"Продажа — деньги полученные, отработка — занятия проведённые. Разница между ними и есть обязательства центра перед учениками.")
   +`<div class="pad stack">
-    <div class="stats" style="box-shadow:none">
+    <div class="stats" style="--cols:5;box-shadow:none">
       <div class="stat"><span class="k">Обязательств на сегодня</span><span class="v num">${money(list.reduce((s,a)=>s+abDebtSum(a),0))}</span><span class="n">не отработанный аванс</span></div>
       <div class="stat"><span class="k">Не проведено занятий</span><span class="v num">${list.reduce((s,a)=>s+(abLive(a)?abLeft(a):0),0)}</span></div>
       <div class="stat"><span class="k">Просрочено</span><span class="v num ${expiring.filter(x=>x.over).length?"neg":""}">${expiring.filter(x=>x.over).length}</span><span class="n">абонементов со сгоревшим сроком</span></div>
