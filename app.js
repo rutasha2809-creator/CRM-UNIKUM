@@ -68,18 +68,18 @@ const monthEnd = (m) => { const [y, mm] = m.split("-").map(Number); return new D
 const sbErr = (e, what) => { console.error(what, e); toast("Не удалось сохранить: " + ((e && e.message) || "нет связи с базой")); };
 
 /* --- преобразование строк базы в объекты приложения и обратно --- */
-const rowStudent = (r) => ({ id: r.id, name: r.name, parent: r.parent || "", phone: r.phone || "", direction: r.direction || "", note: r.note || "" });
-const outStudent = (s) => ({ id: s.id, name: s.name, parent: s.parent || "", phone: s.phone || "", direction: s.direction || "", note: s.note || "" });
-const rowTeacher = (r) => ({ id: r.id, name: r.name, subject: r.subject || "", phone: r.phone || "", rate: +r.rate || 0 });
-const outTeacher = (t) => ({ id: t.id, name: t.name, subject: t.subject || "", phone: t.phone || "", rate: +t.rate || 0 });
-const rowTariff = (r) => ({ id: r.id, name: r.name, lessons: r.lessons, price: +r.price || 0 });
-const outTariff = (t) => ({ id: t.id, name: t.name, lessons: t.lessons || 1, price: +t.price || 0 });
+const rowStudent = (r) => ({ id: r.id, name: r.name, parent: r.parent || "", phone: r.phone || "", direction: r.direction || "", note: r.note || "", archived: !!r.archived });
+const outStudent = (s) => ({ id: s.id, name: s.name, parent: s.parent || "", phone: s.phone || "", direction: s.direction || "", note: s.note || "", archived: !!s.archived });
+const rowTeacher = (r) => ({ id: r.id, name: r.name, subject: r.subject || "", phone: r.phone || "", rate: +r.rate || 0, archived: !!r.archived });
+const outTeacher = (t) => ({ id: t.id, name: t.name, subject: t.subject || "", phone: t.phone || "", rate: +t.rate || 0, archived: !!t.archived });
+const rowTariff = (r) => ({ id: r.id, name: r.name, lessons: r.lessons, price: +r.price || 0, validDays: r.valid_days || 0, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", format: r.format || "", article: r.article || "", note: r.note || "", archived: !!r.archived });
+const outTariff = (t) => ({ id: t.id, name: t.name, lessons: t.lessons || 1, price: +t.price || 0, valid_days: t.validDays || null, direction: t.direction || "", subject: t.subject || "", teacher_id: t.teacherId || null, format: t.format || "", article: t.article || "", note: t.note || "", archived: !!t.archived });
 const rowGroup = (r) => ({ id: r.id, name: r.name, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", time: r.time || "", days: r.days || [], studentIds: r.student_ids || [] });
 const outGroup = (g) => ({ id: g.id, name: g.name, direction: g.direction || "", subject: g.subject || "", teacher_id: g.teacherId || null, time: g.time || "", days: g.days || [], student_ids: g.studentIds || [] });
 const rowOp = (r) => ({ id: r.id, date: r.date, type: r.type, amount: +r.amount || 0, article: r.article || "", direction: r.direction || "", subject: r.subject || "", source: r.source || "", studentId: r.student_id || "", teacherId: r.teacher_id || "", abonId: r.abon_id || "", note: r.note || "", fisc: !!r.fisc, imported: !!r.imported });
 const outOp = (o) => ({ id: o.id, date: o.date, type: o.type, amount: +o.amount || 0, article: o.article || "", direction: o.direction || "", subject: o.subject || "", source: o.source || "", student_id: o.studentId || null, teacher_id: o.teacherId || null, abon_id: o.abonId || null, note: o.note || "", fisc: !!o.fisc, imported: !!o.imported });
-const rowAbon = (r) => ({ id: r.id, date: r.date, studentId: r.student_id || "", tariffId: r.tariff_id || "", name: r.name, lessons: r.lessons, price: +r.price || 0, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", until: r.until || "", visits: [] });
-const outAbon = (a) => ({ id: a.id, date: a.date, student_id: a.studentId || null, tariff_id: a.tariffId || null, name: a.name, lessons: a.lessons || 1, price: +a.price || 0, direction: a.direction || "", subject: a.subject || "", teacher_id: a.teacherId || null, until: a.until || null });
+const rowAbon = (r) => ({ id: r.id, date: r.date, studentId: r.student_id || "", tariffId: r.tariff_id || "", name: r.name, lessons: r.lessons, price: +r.price || 0, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", until: r.until || "", format: r.format || "", visits: [] });
+const outAbon = (a) => ({ id: a.id, date: a.date, student_id: a.studentId || null, tariff_id: a.tariffId || null, name: a.name, lessons: a.lessons || 1, price: +a.price || 0, direction: a.direction || "", subject: a.subject || "", teacher_id: a.teacherId || null, until: a.until || null, format: a.format || "" });
 const rowLesson = (r) => ({ id: r.id, date: r.date, groupId: r.group_id || "", name: r.name, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", note: r.note || "", attend: r.attend || [] });
 const outLesson = (l) => ({ id: l.id, date: l.date, group_id: l.groupId || null, name: l.name, direction: l.direction || "", subject: l.subject || "", teacher_id: l.teacherId || null, note: l.note || "", attend: l.attend || [] });
 
@@ -257,7 +257,7 @@ document.getElementById("btn-backup").onclick=backup;
 
 function render(){
   document.querySelectorAll("[data-nav]").forEach(b=>b.classList.toggle("on",b.dataset.nav===S.nav));
-  document.getElementById("cnt-students").textContent=S.students.length||"";
+  document.getElementById("cnt-students").textContent=S.students.filter(s=>!s.archived).length||"";
   document.getElementById("cnt-abon").textContent=allAbon().filter(a=>abLeft(a)>0).length||"";
   document.getElementById("cnt-ops").textContent=allOps().length||"";
   document.getElementById("cnt-lessons").textContent=allLessons().length||"";
@@ -351,10 +351,11 @@ function yearSelect(){
 
 /* ============================ ученики ============================ */
 function viewStudents(v){
-  const rows=S.students.slice().sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+  const archN=S.students.filter(s=>s.archived).length;
+  const rows=S.students.filter(s=>showArch("students")||!s.archived).sort((a,b)=>a.name.localeCompare(b.name,"ru"));
   v.innerHTML=`
   <div class="head"><div><h1>Ученики</h1><p>Продажа абонемента и списание занятия — прямо из строки ученика. В карточке видно все абонементы, посещения и оплаты.</p></div>
-  <div class="tools"><button class="btn primary" data-act="new-student">Добавить ученика</button></div></div>
+  <div class="tools">${archN?`<button class="btn" data-act="toggle-arch" data-id="students">${showArch("students")?"Скрыть архив":"Показать архив"} (${archN})</button>`:""}<button class="btn primary" data-act="new-student">Добавить ученика</button></div></div>
   <div class="panel">
     <header><h2>${rows.length} учеников</h2><span class="sub">остаток занятий считается по проведённым спискам</span></header>
     ${rows.length?`<div class="tw"><table><thead><tr><th>Ученик</th><th>Направление</th><th>Контакт</th><th class="n">Оплачено всего</th><th class="n">Остаток занятий</th><th class="n">Абонементы</th><th></th></tr></thead><tbody>
@@ -363,7 +364,7 @@ function viewStudents(v){
       const left=ab.reduce((n,a)=>n+abLeft(a),0);
       const paid=allOps().filter(o=>o.studentId===s.id&&o.type==="income").reduce((n,o)=>n+o.amount,0);
       const active=ab.filter(a=>abLeft(a)>0).length;
-      return `<tr><td><b>${esc(s.name)}</b>${s.parent?`<div class="hint">${esc(s.parent)}</div>`:""}</td>
+      return `<tr><td><b>${esc(s.name)}</b>${s.archived?' <span class="chip mut">архив</span>':""}${s.parent?`<div class="hint">${esc(s.parent)}</div>`:""}</td>
       <td>${esc(s.direction||"—")}</td><td>${esc(s.phone||"")}</td>
       <td class="n">${money(paid)}</td>
       <td class="n">${left?`<span class="chip ${left<=2?"warn":"in"}">${left}</span>`:`<span class="chip mut">0</span>`}</td>
@@ -553,7 +554,7 @@ function groupForm(g={}){
   </div>
   <label class="f"><span>Дни занятий</span><div class="row">${[1,2,3,4,5,6,0].map(i=>`<label class="row" style="align-items:center;gap:5px"><input type="checkbox" name="d${i}" ${days.includes(i)?"checked":""} style="width:auto"><span>${WD_SHORT[i]}</span></label>`).join("")}</div></label>
   <label class="f"><span>Состав группы</span><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px;max-height:260px;overflow:auto;border:1px solid var(--line-soft);border-radius:8px;padding:10px">
-    ${S.students.slice().sort((a,b)=>a.name.localeCompare(b.name,"ru")).map(s=>`<label class="row" style="align-items:center;gap:7px"><input type="checkbox" name="s_${s.id}" ${(g.studentIds||[]).includes(s.id)?"checked":""} style="width:auto"><span>${esc(s.name)}</span></label>`).join("")}
+    ${S.students.filter(s=>!s.archived||(g.studentIds||[]).includes(s.id)).sort((a,b)=>a.name.localeCompare(b.name,"ru")).map(s=>`<label class="row" style="align-items:center;gap:7px"><input type="checkbox" name="s_${s.id}" ${(g.studentIds||[]).includes(s.id)?"checked":""} style="width:auto"><span>${esc(s.name)}</span></label>`).join("")}
   </div></label>`;
 }
 function readGroup(l,g={}){
@@ -580,6 +581,17 @@ function historyBlock(){
 }
 
 /* ============================ абонементы ============================ */
+function catalogHTML(){
+  const tpls=tplList();
+  return `<div class="panel"><header><h2>Каталог абонементов</h2><span class="sub">выберите абонемент — останется указать ученика</span><button class="btn mini" data-act="add-tariff">+ Новый шаблон</button></header>
+  ${tpls.length?`<div class="cat">${tpls.map(t=>`<div class="tpl"><div class="tpl-n">${esc(t.name)}</div>
+    <div class="tpl-p num">${money(t.price)} ₽</div>
+    <div class="hint">${t.lessons} зан. · ${money(t.lessons?t.price/t.lessons:t.price)} ₽ за занятие</div>
+    <div class="tpl-m">${tplMeta(t).map(x=>`<span class="chip mut">${esc(x)}</span>`).join("")}</div>
+    <div class="tpl-b"><button class="btn primary mini" data-act="sell-tpl" data-id="${t.id}">Выставить</button> <button class="btn mini" data-act="edit-tariff" data-id="${t.id}" title="Изменить">✎</button></div></div>`).join("")}</div>`
+   :`<div class="empty">Шаблонов пока нет. Создайте постоянные абонементы — и выставляйте их в один клик.</div>`}
+  </div>`;
+}
 function viewAbon(v){
   const list=allAbon().slice().sort((a,b)=>(b.date||"").localeCompare(a.date||""));
   const active=list.filter(a=>abLeft(a)>0);
@@ -587,6 +599,7 @@ function viewAbon(v){
   <div class="head"><div><h1>Абонементы и списание занятий</h1><p>Продажа абонемента создаёт поступление в журнале; каждое проведённое занятие списывается отсюда и попадает в БДР по методу начисления.</p></div>
   <div class="tools"><button class="btn primary" data-act="new-abon">Продать абонемент</button></div></div>
   <div class="stack">
+  ${catalogHTML()}
   <div class="stats">
     <div class="stat"><span class="k">Действующих</span><span class="v num">${active.length}</span><span class="n">с остатком занятий</span></div>
     <div class="stat"><span class="k">Не отработано занятий</span><span class="v num">${active.reduce((s,a)=>s+abLeft(a),0)}</span><span class="n">по всем ученикам</span></div>
@@ -598,7 +611,7 @@ function viewAbon(v){
     ${list.length?`<div class="tw"><table><thead><tr><th>Продан</th><th>Ученик</th><th>Абонемент</th><th>Направление / педагог</th><th class="n">Цена</th><th class="n">За занятие</th><th>Использовано</th><th></th></tr></thead><tbody>
     ${list.map(a=>{const used=(a.visits||[]).length,pct=a.lessons?Math.min(100,used/a.lessons*100):0;const left=abLeft(a);
       return `<tr><td class="n">${esc(a.date)}</td><td>${esc(studentName(a.studentId))||"—"}</td>
-      <td>${esc(a.name)}</td><td>${esc(a.direction||"—")}<div class="hint">${esc(teacherName(a.teacherId)||"педагог не указан")}</div></td>
+      <td>${esc(a.name)}</td><td>${esc(a.direction||"—")}<div class="hint">${esc([teacherName(a.teacherId)||"педагог не указан",a.format].filter(Boolean).join(" · "))}</div></td>
       <td class="n">${money(a.price)}${a.until?`<div class="hint">до ${esc(a.until)}${abExpired(a)?" · просрочен":""}</div>`:""}</td><td class="n">${money(abPrice(a))}</td>
       <td><div class="row" style="align-items:center;gap:8px"><div class="bar"><i class="${left===0?"out":left<=2?"low":""}" style="width:${pct}%"></i></div><span class="num" style="font-size:12px">${used}/${a.lessons}</span></div></td>
       <td class="n">${left?`<button class="btn mini" data-act="visit" data-id="${a.id}">Списать</button>`:`<span class="chip mut">закрыт</span>`} <button class="btn mini" data-act="abon-card" data-id="${a.id}">История</button></td></tr>`;}).join("")}
@@ -652,13 +665,13 @@ function viewOps(v){
 
 /* ============================ отчёты ============================ */
 function viewReports(v){
-  const tabs=[["bdds","БДДС · движение денег"],["bdr","БДР · доходы и расходы"],["abon","Абонементы"],["pl","P&L по направлениям"],["ros","Рентабельность"],["tax","Налоги УСН"]];
+  const tabs=[["bdds","БДДС · движение денег"],["bdr","БДР · доходы и расходы"],["abon","Абонементы"],["pl","P&L по направлениям"],["ros","Рентабельность центра"],["unit","Рентабельность по разрезам"],["tax","Налоги УСН"]];
   v.innerHTML=`
   <div class="head"><div><h1>Отчёты</h1><p>БДДС считается по кассе, БДР — по начислению: выручка признаётся в месяце проведённого занятия, а не оплаты.</p></div>
   <div class="tools">${yearSelect()}<button class="btn" data-act="export-report">Выгрузить отчёт в Excel</button></div></div>
   <div class="panel">
     <div class="tabs">${tabs.map(t=>`<button class="tab ${S.repTab===t[0]?"on":""}" data-rep="${t[0]}">${t[1]}</button>`).join("")}</div>
-    <div id="repbody">${({bdds:repBDDS,bdr:repBDR,abon:repAbon,pl:repPL,ros:repROS,tax:repTax}[S.repTab])()}</div>
+    <div id="repbody">${({bdds:repBDDS,bdr:repBDR,abon:repAbon,pl:repPL,ros:repROS,unit:repUnit,tax:repTax}[S.repTab])()}</div>
   </div>`;
   bind(v);
   v.querySelectorAll("[data-rep]").forEach(b=>b.onclick=()=>{S.repTab=b.dataset.rep;render();});
@@ -829,6 +842,67 @@ function repROS(){
       <div class="stat"><span class="k">Лучший месяц</span><span class="v num">${MONTHS[ros.indexOf(Math.max(...ros))]||"—"}</span><span class="n">${Math.max(...ros).toFixed(1)}% ROS</span></div>
     </div></div>`;
 }
+/* --- Рентабельность: направления, педагоги, абонементы, точка безубыточности --- */
+function visitEcon(y){
+  const les={}; allLessons().forEach(l=>les[l.id]=l);
+  const out=[];
+  allAbon().forEach(a=>(a.visits||[]).forEach(v=>{
+    if(+String(v.date).slice(0,4)!==y)return;
+    const tid=v.teacherId||a.teacherId||"", rate=teacherRate(tid), l=v.lessonId?les[v.lessonId]:null;
+    const n=l?Math.max(1,(l.attend||[]).filter(x=>x.abonId).length):1;
+    out.push({a,date:v.date,rev:abPrice(a),cost:rate/n,dir:a.direction||"Без привязки",tid,tpl:a.tariffId||""});
+  }));
+  return out;
+}
+function ecoTable(first,map,extra){
+  const rows=Object.entries(map).sort((a,b)=>b[1].rev-a[1].rev);
+  if(!rows.length)return `<div class="empty">Занятия ещё не проводились.</div>`;
+  const tot=rows.reduce((t,[,x])=>({cnt:t.cnt+x.cnt,rev:t.rev+x.rev,cost:t.cost+x.cost}),{cnt:0,rev:0,cost:0});
+  const line=(name,x,cls)=>{const m=x.rev-x.cost;return `<tr class="${cls||""}"><td>${esc(name)}</td>${extra?`<td class="n">${x.sold||""}</td>`:""}<td class="n">${x.cnt}</td><td class="n">${money(x.rev)}</td><td class="n">${money(x.cost)}</td><td class="n" style="color:var(--${m>=0?"pos":"neg"})">${money(m)}</td><td class="n">${x.rev?Math.round(m/x.rev*100)+"%":"—"}</td><td class="n">${x.cnt?money(x.rev/x.cnt):"—"}</td></tr>`;};
+  return `<div class="tw"><table><thead><tr><th>${first}</th>${extra?'<th class="n">Продано, шт</th>':""}<th class="n">Занятий</th><th class="n">Выручка</th><th class="n">Оплата педагогов</th><th class="n">Маржа</th><th class="n">Маржа, %</th><th class="n">Цена занятия</th></tr></thead><tbody>
+  ${rows.map(([k,x])=>line(k,x)).join("")}${line("Итого",tot,"total")}</tbody></table></div>`;
+}
+function repUnit(){
+  const y=S.year, ve=visitEcon(y), ks=monthKeys(y), ops=opsOfYear(y);
+  const grp=(keyFn)=>{const m={};ve.forEach(x=>{const k=keyFn(x);const o=m[k]=m[k]||{cnt:0,rev:0,cost:0,sold:0};o.cnt++;o.rev+=x.rev;o.cost+=x.cost;});return m;};
+  const byDir=grp(x=>x.dir), byTeach=grp(x=>teacherName(x.tid)||"Педагог не указан");
+  const byTpl=grp(x=>{const t=tariff(x.tpl);return t?t.name:"Без шаблона";});
+  allAbon().filter(a=>+String(a.date).slice(0,4)===y).forEach(a=>{const t=tariff(a.tariffId),k=t?t.name:"Без шаблона";const o=byTpl[k]=byTpl[k]||{cnt:0,rev:0,cost:0,sold:0};o.sold++;});
+  const rev=ve.reduce((s,x)=>s+x.rev,0), cost=ve.reduce((s,x)=>s+x.cost,0), margin=rev-cost, cnt=ve.length;
+  const noRate=[...new Set(ve.filter(x=>!teacherRate(x.tid)).map(x=>teacherName(x.tid)||"Педагог не указан"))];
+  /* занятия без списания абонемента: педагогу платить надо, выручки нет */
+  const idle=allLessons().filter(l=>+String(l.date).slice(0,4)===y&&!(l.attend||[]).some(x=>x.abonId));
+  const idleCost=idle.reduce((s,l)=>s+teacherRate(l.teacherId),0);
+  /* точка безубыточности */
+  const constByM=ks.map(k=>ops.filter(o=>o.type==="expense"&&ym(o.date)===k&&(artByName(o.article)||{}).nature==="const").reduce((s,o)=>s+o.amount,0));
+  const monthsData=constByM.filter(x=>x>0).length, constAvg=monthsData?constByM.reduce((s,x)=>s+x,0)/monthsData:0;
+  const visitMonths=new Set(ve.map(x=>ym(x.date))).size, perMonth=visitMonths?cnt/visitMonths:0;
+  const avgMargin=cnt?margin/cnt:0, need=avgMargin>0&&constAvg?Math.ceil(constAvg/avgMargin):0;
+  const constYear=constByM.reduce((s,x)=>s+x,0);
+  return `<div class="pad stack">
+   <div class="hint">Выручка — по методу начисления (стоимость проведённых занятий). Оплата педагогов — расчётная: ставка за занятие из справочника «Педагоги»; в групповом занятии ставка делится между учениками, у которых списан абонемент.</div>
+   <div class="stats" style="box-shadow:none">
+    <div class="stat"><span class="k">Выручка</span><span class="v num">${money(rev)}</span><span class="n">${cnt} проведённых занятий</span></div>
+    <div class="stat"><span class="k">Оплата педагогов</span><span class="v num">${money(cost)}</span><span class="n">по ставкам</span></div>
+    <div class="stat"><span class="k">Маржа</span><span class="v num ${margin>=0?"pos":"neg"}">${money(margin)}</span><span class="n">${rev?Math.round(margin/rev*100):0}% от выручки</span></div>
+    <div class="stat"><span class="k">Занятия без абонемента</span><span class="v num ${idle.length?"neg":""}">${idle.length}</span><span class="n">${idle.length?"оплата педагогов "+money(idleCost)+" ₽ без выручки":"таких нет"}</span></div>
+   </div>
+   ${noRate.length?`<div class="hint"><span class="chip warn">внимание</span> У педагогов не задана ставка: ${esc(noRate.join(", "))}. Их занятия считаются без затрат, маржа завышена.</div>`:""}
+   <div><h3 style="font-size:14px;margin-bottom:8px">По направлениям</h3>${ecoTable("Направление",byDir)}</div>
+   <div><h3 style="font-size:14px;margin-bottom:8px">По педагогам</h3>${ecoTable("Педагог",byTeach)}</div>
+   <div><h3 style="font-size:14px;margin-bottom:8px">По абонементам</h3>${ecoTable("Абонемент",byTpl,true)}</div>
+   <div><h3 style="font-size:14px;margin-bottom:8px">Точка безубыточности</h3>
+    ${constAvg&&cnt?`<div class="stats" style="box-shadow:none">
+      <div class="stat"><span class="k">Постоянные расходы</span><span class="v num">${money(constAvg)}</span><span class="n">в месяц, в среднем по журналу</span></div>
+      <div class="stat"><span class="k">Маржа с занятия</span><span class="v num">${money(avgMargin)}</span><span class="n">в среднем</span></div>
+      <div class="stat"><span class="k">Нужно занятий в месяц</span><span class="v num">${need||"—"}</span><span class="n">чтобы покрыть постоянные расходы</span></div>
+      <div class="stat"><span class="k">Проводится в месяц</span><span class="v num ${need&&perMonth>=need?"pos":"neg"}">${Math.round(perMonth)}</span><span class="n">${need?(perMonth>=need?"центр выходит в плюс":"не хватает "+Math.max(0,Math.ceil(need-perMonth))+" занятий"):""}</span></div>
+     </div>
+     <div class="hint" style="margin-top:8px">Результат за год: маржа ${money(margin)} − постоянные расходы ${money(constYear)} = <b class="num">${money(margin-constYear)} ₽</b> (до налога УСН).</div>`
+    :`<div class="empty">Для расчёта нужны проведённые занятия и операции с постоянными расходами в журнале.</div>`}
+   </div>
+  </div>`;
+}
 /* --- Налоги --- */
 function repTax(){
   const y=S.year,ops=opsOfYear(y);
@@ -855,7 +929,7 @@ function repTax(){
 /* ============================ справочники (НСИ) ============================ */
 const NSI_MENU=[
   {title:"Операции",items:[{k:"articles",name:"Статьи операций"},{k:"sources",name:"Источники"}]},
-  {title:"Занятия",items:[{k:"directions",name:"Направления"},{k:"plgroups",name:"Группы для P&L"},{k:"subjects",name:"Предметы"},{k:"tariffs",name:"Тарифы"},{k:"teachers",name:"Педагоги"},{k:"students",name:"Ученики"}]},
+  {title:"Занятия",items:[{k:"directions",name:"Направления"},{k:"plgroups",name:"Группы для P&L"},{k:"subjects",name:"Предметы"},{k:"tariffs",name:"Абонементы (шаблоны)"},{k:"teachers",name:"Педагоги"},{k:"students",name:"Ученики"}]},
   {title:"Настройки",items:[{k:"taxes",name:"Налоги"},{k:"access",name:"Доступ"}]}
 ];
 const NSI_NAME=Object.fromEntries(NSI_MENU.flatMap(g=>g.items.map(i=>[i.k,i.name])));
@@ -868,8 +942,8 @@ const NSI_LIST={
 };
 function nsiCount(k){
   switch(k){case"articles":return R().articles.length;case"sources":return R().sources.length;case"directions":return R().directions.length;
-    case"plgroups":return R().groups.length;case"subjects":return R().subjects.length;case"tariffs":return S.tariffs.length;
-    case"teachers":return S.teachers.length;case"students":return S.students.length;case"access":return MEMBERS.length;default:return "";}
+    case"plgroups":return R().groups.length;case"subjects":return R().subjects.length;case"tariffs":return S.tariffs.filter(t=>!t.archived).length;
+    case"teachers":return S.teachers.filter(t=>!t.archived).length;case"students":return S.students.filter(s=>!s.archived).length;case"access":return MEMBERS.length;default:return "";}
 }
 /* сколько раз значение справочника встречается в данных */
 function nsiUsage(k,name){
@@ -993,20 +1067,24 @@ function nsiSectionHTML(k){
     return nsiPanel(k,{body,add:`<button class="btn primary mini" data-nsi-act="add" data-k="directions">Добавить</button>`});
   }
   if(k==="tariffs"){
-    const sold=(id)=>allAbon().filter(a=>a.tariffId===id).length;
-    const body=`<div class="tw"><table><thead><tr><th>Наименование</th><th class="n">Занятий</th><th class="n">Цена</th><th class="n">За занятие</th><th class="n">Продано</th><th></th></tr></thead><tbody>
-      ${S.tariffs.slice().sort((a,b)=>(a.lessons-b.lessons)||a.name.localeCompare(b.name,"ru")).map(t=>`<tr data-s="${sAttr(t.name)}"><td>${esc(t.name)}</td><td class="n">${t.lessons}</td><td class="n">${money(t.price)}</td><td class="n">${money(t.lessons?t.price/t.lessons:t.price)}</td><td class="n">${sold(t.id)||""}</td>
+    const arch=S.tariffs.filter(t=>t.archived).length;
+    const tools=arch?`<button class="btn mini" data-act="toggle-arch" data-id="tariffs">${showArch("tariffs")?"Скрыть архив":"Показать архив"} (${arch})</button>`:"";
+    const body=`<div class="tw"><table><thead><tr><th>Название</th><th>Направление · предмет · педагог</th><th class="n">Занятий</th><th class="n">Цена</th><th class="n">За занятие</th><th class="n">Срок, дн.</th><th class="n">Продано</th><th></th></tr></thead><tbody>
+      ${tplList(showArch("tariffs")).map(t=>`<tr data-s="${sAttr(t.name,t.direction,t.subject,teacherName(t.teacherId))}"><td>${esc(t.name)}${t.archived?' <span class="chip mut">архив</span>':""}</td>
+      <td>${esc([t.direction,t.subject,teacherName(t.teacherId),t.format].filter(Boolean).join(" · ")||"—")}</td>
+      <td class="n">${t.lessons}</td><td class="n">${money(t.price)}</td><td class="n">${money(t.lessons?t.price/t.lessons:t.price)}</td><td class="n">${t.validDays||""}</td><td class="n">${tplSold(t.id)||""}</td>
       <td class="n"><button class="btn mini" data-act="edit-tariff" data-id="${t.id}" title="Изменить">✎</button> <button class="btn mini danger" data-act="del-tariff" data-id="${t.id}" title="Удалить">✕</button></td></tr>`).join("")}
       </tbody></table></div>`;
-    return nsiPanel(k,{body,add:`<button class="btn primary mini" data-act="add-tariff">Добавить</button>`});
+    return nsiPanel(k,{tools,body,add:`<button class="btn primary mini" data-act="add-tariff">Добавить</button>`});
   }
   if(k==="teachers"){
     const body=`<div class="tw"><table><thead><tr><th>Педагог</th><th>Предмет</th><th>Телефон</th><th class="n">Ставка за занятие</th><th class="n">Проведено занятий</th><th></th></tr></thead><tbody>
-      ${S.teachers.slice().sort((a,b)=>a.name.localeCompare(b.name,"ru")).map(t=>{const cnt=allAbon().reduce((s,a)=>s+(a.visits||[]).filter(x=>(x.teacherId||a.teacherId)===t.id).length,0);
-      return `<tr data-s="${sAttr(t.name,t.subject,t.phone)}"><td>${esc(t.name)}</td><td>${esc(t.subject||"")}</td><td>${esc(t.phone||"")}</td><td class="n">${t.rate?money(t.rate):"—"}</td><td class="n">${cnt||""}</td>
+      ${S.teachers.filter(t=>showArch("teachers")||!t.archived).sort((a,b)=>a.name.localeCompare(b.name,"ru")).map(t=>{const cnt=allAbon().reduce((s,a)=>s+(a.visits||[]).filter(x=>(x.teacherId||a.teacherId)===t.id).length,0);
+      return `<tr data-s="${sAttr(t.name,t.subject,t.phone)}"><td>${esc(t.name)}${t.archived?' <span class="chip mut">архив</span>':""}</td><td>${esc(t.subject||"")}</td><td>${esc(t.phone||"")}</td><td class="n">${t.rate?money(t.rate):"—"}</td><td class="n">${cnt||""}</td>
       <td class="n"><button class="btn mini" data-act="edit-teacher" data-id="${t.id}" title="Изменить">✎</button> <button class="btn mini danger" data-act="del-teacher" data-id="${t.id}" title="Удалить">✕</button></td></tr>`;}).join("")}
       </tbody></table></div>`;
-    return nsiPanel(k,{body,add:`<button class="btn primary mini" data-act="add-teacher">Добавить</button>`});
+    const archT=S.teachers.filter(t=>t.archived).length;
+    return nsiPanel(k,{tools:archT?`<button class="btn mini" data-act="toggle-arch" data-id="teachers">${showArch("teachers")?"Скрыть архив":"Показать архив"} (${archT})</button>`:"",body,add:`<button class="btn primary mini" data-act="add-teacher">Добавить</button>`});
   }
   if(k==="taxes"){
     const body=`<div class="pad grid2" style="max-width:560px">
@@ -1133,7 +1211,7 @@ function modal(title,bodyHTML,onSave,saveLabel){
 const val=(l,n)=>{const e=l.querySelector(`[name="${n}"]`);return e?e.value.trim():"";};
 const chk=(l,n)=>{const e=l.querySelector(`[name="${n}"]`);return e?e.checked:false;};
 const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?"selected":""}>${esc(x)}</option>`).join("");
-const optId=(arr,sel)=>`<option value="">— не выбрано —</option>`+arr.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${esc(x.name)}</option>`).join("");
+const optId=(arr,sel)=>`<option value="">— не выбрано —</option>`+arr.filter(x=>!x.archived||x.id===sel).map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${esc(x.name)}</option>`).join("");
 
 /* --- операция --- */
 function opForm(o={}){
@@ -1193,7 +1271,8 @@ function studentForm(s={}){
    <label class="f"><span>Родитель / контактное лицо</span><input name="parent" value="${esc(s.parent||"")}"></label>
    <label class="f"><span>Телефон</span><input name="phone" value="${esc(s.phone||"")}"></label>
    <label class="f"><span>Основное направление</span><select name="direction">${opt(R().directions.map(d=>d.name),s.direction)}</select></label>
-  </div><label class="f"><span>Заметки</span><textarea name="note" rows="2">${esc(s.note||"")}</textarea></label>`;
+  </div><label class="f"><span>Заметки</span><textarea name="note" rows="2">${esc(s.note||"")}</textarea></label>
+   ${s.id?`<label class="row" style="align-items:center;gap:8px"><input type="checkbox" name="archived" ${s.archived?"checked":""} style="width:auto"><span class="hint">В архиве (ученик больше не занимается)</span></label>`:""}`;
 }
 function newStudent(){
   modal("Новый ученик",studentForm(),async(l)=>{
@@ -1205,7 +1284,7 @@ function newStudent(){
 function editStudent(id){
   const s=S.students.find(x=>x.id===id); if(!s)return;
   modal("Карточка · "+s.name,studentForm(s),async(l)=>{
-    Object.assign(s,{name:val(l,"name"),parent:val(l,"parent"),phone:val(l,"phone"),direction:val(l,"direction"),note:val(l,"note")});
+    Object.assign(s,{name:val(l,"name"),parent:val(l,"parent"),phone:val(l,"phone"),direction:val(l,"direction"),note:val(l,"note"),archived:chk(l,"archived")});
     await saveStudents(); toast("Сохранено");
   });
 }
@@ -1242,67 +1321,155 @@ function studentCard(id){
 }
 
 /* --- педагог, тариф, статья, направление --- */
+const teacherUsed=(id)=>allAbon().some(a=>a.teacherId===id||(a.visits||[]).some(v=>v.teacherId===id))||allOps().some(o=>o.teacherId===id)||allLessons().some(l=>l.teacherId===id)||S.groups.some(g=>g.teacherId===id)||S.tariffs.some(t=>t.teacherId===id);
+async function delTeacher(id){
+  const t=S.teachers.find(x=>x.id===id);if(!t)return;
+  if(teacherUsed(id)){
+    if(!confirm("У педагога есть занятия и операции, поэтому он будет перенесён в архив. Продолжить?"))return;
+    t.archived=true;if(await saveTeachers())toast("Перенесён в архив");
+  } else {
+    if(!confirm("Удалить педагога?"))return;
+    S.teachers=S.teachers.filter(x=>x.id!==id);if(await saveTeachers())toast("Удалено");
+  }
+  render();
+}
 function teacherForm(t={}){return `<div class="grid2">
   <label class="f"><span>ФИО</span><input name="name" value="${esc(t.name||"")}"></label>
   <label class="f"><span>Предмет / направление</span><input name="subject" value="${esc(t.subject||"")}"></label>
   <label class="f"><span>Телефон</span><input name="phone" value="${esc(t.phone||"")}"></label>
-  <label class="f"><span>Ставка за занятие, ₽</span><input type="number" name="rate" value="${t.rate||""}"></label></div>`;}
+  <label class="f"><span>Ставка за занятие, ₽</span><input type="number" name="rate" value="${t.rate||""}"></label></div>
+  ${t.id?`<label class="row" style="align-items:center;gap:8px"><input type="checkbox" name="archived" ${t.archived?"checked":""} style="width:auto"><span class="hint">В архиве (не показывать при выборе)</span></label>`:""}`;}
 function newTeacher(){modal("Новый педагог",teacherForm(),async(l)=>{const n=val(l,"name");if(!n){toast("Укажите ФИО");return false;}
   S.teachers.push({id:uid("t"),name:n,subject:val(l,"subject"),phone:val(l,"phone"),rate:parseNum(val(l,"rate"))});await saveTeachers();toast("Педагог добавлен");},"Добавить");}
 function editTeacher(id){const t=S.teachers.find(x=>x.id===id);if(!t)return;modal("Педагог",teacherForm(t),async(l)=>{
-  Object.assign(t,{name:val(l,"name"),subject:val(l,"subject"),phone:val(l,"phone"),rate:parseNum(val(l,"rate"))});await saveTeachers();toast("Сохранено");});}
-function tariffForm(t={}){return `<div class="grid3">
-  <label class="f"><span>Наименование</span><input name="name" value="${esc(t.name||"")}" placeholder="Абонемент на 8 занятий"></label>
-  <label class="f"><span>Количество занятий</span><input type="number" name="lessons" value="${t.lessons||1}"></label>
-  <label class="f"><span>Цена, ₽</span><input type="number" name="price" value="${t.price||""}"></label></div>
-  <div class="hint">Разовое занятие и пробное — это тариф с одним занятием.</div>`;}
-function newTariff(){modal("Новый тариф",tariffForm(),async(l)=>{const n=val(l,"name");if(!n){toast("Укажите наименование");return false;}
-  S.tariffs.push({id:uid("tr"),name:n,lessons:Math.max(1,parseNum(val(l,"lessons"))),price:parseNum(val(l,"price"))});await saveTariffs();toast("Тариф добавлен");},"Добавить");}
-function editTariff(id){const t=tariff(id);if(!t)return;modal("Тариф",tariffForm(t),async(l)=>{
-  Object.assign(t,{name:val(l,"name"),lessons:Math.max(1,parseNum(val(l,"lessons"))),price:parseNum(val(l,"price"))});await saveTariffs();toast("Сохранено");});}
-
-/* --- продажа абонемента --- */
-function newAbon(preStudent){
+  Object.assign(t,{name:val(l,"name"),subject:val(l,"subject"),phone:val(l,"phone"),rate:parseNum(val(l,"rate")),archived:chk(l,"archived")});await saveTeachers();toast("Сохранено");});}
+/* --- шаблоны абонементов (постоянные абонементы) --- */
+const addDays=(iso,n)=>{const d=new Date((iso||today())+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+const showArch=(k)=>!!(S.arch&&S.arch[k]);
+const teacherRate=(id)=>{const t=S.teachers.find(x=>x.id===id);return t?+t.rate||0:0;};
+const tplSold=(id)=>allAbon().filter(a=>a.tariffId===id).length;
+const tplList=(withArchived)=>S.tariffs.filter(t=>withArchived||!t.archived).slice().sort((a,b)=>(a.direction||"яя").localeCompare(b.direction||"яя","ru")||(a.lessons-b.lessons)||a.name.localeCompare(b.name,"ru"));
+const optE=(arr,sel,empty)=>`<option value="">${empty||"— не выбрано —"}</option>`+opt(arr,sel);
+function tplMeta(t){return [t.direction,t.subject,teacherName(t.teacherId),t.format,t.validDays?`${t.validDays} дн.`:""].filter(Boolean);}
+function tariffForm(t={}){
   const r=R();
-  modal("Продажа абонемента",`
-   <div class="grid3">
-     <label class="f"><span>Дата продажи</span><input type="date" name="date" value="${today()}"></label>
+  return `<div class="grid2">
+   <label class="f"><span>Название</span><input name="name" value="${esc(t.name||"")}" placeholder="Английский, 8 занятий"></label>
+   <label class="f"><span>Количество занятий</span><input type="number" name="lessons" min="1" value="${t.lessons||8}"></label>
+  </div>
+  <div class="grid3">
+   <label class="f"><span>Цена, ₽</span><input type="number" name="price" value="${t.price||""}"></label>
+   <label class="f"><span>Срок действия, дней</span><input type="number" name="validDays" min="0" value="${t.validDays||""}" placeholder="без срока"></label>
+   <label class="f"><span>Формат</span><select name="format">${optE(r.formats,t.format,"— любой —")}</select></label>
+  </div>
+  <div class="grid3">
+   <label class="f"><span>Направление</span><select name="direction">${optE(r.directions.map(d=>d.name),t.direction)}</select></label>
+   <label class="f"><span>Предмет</span><select name="subject">${optE(r.subjects,t.subject)}</select></label>
+   <label class="f"><span>Педагог</span><select name="teacherId">${optId(S.teachers,t.teacherId)}</select></label>
+  </div>
+  <label class="f"><span>Статья дохода при продаже</span><select name="article">${optE(r.articles.filter(a=>a.kind==="income").map(a=>a.name),t.article,"— по названию, иначе первая статья дохода —")}</select></label>
+  <label class="f"><span>Заметка</span><input name="note" value="${esc(t.note||"")}"></label>
+  ${t.id?`<label class="row" style="align-items:center;gap:8px"><input type="checkbox" name="archived" ${t.archived?"checked":""} style="width:auto"><span class="hint">В архиве (не показывать в каталоге и при продаже)</span></label>`:""}
+  <div class="hint" data-tpl-calc></div>`;
+}
+function bindTariffForm(l){
+  const calc=()=>{
+    const n=Math.max(1,parseNum(val(l,"lessons"))||1),p=parseNum(val(l,"price")),rate=teacherRate(val(l,"teacherId")),box=l.querySelector("[data-tpl-calc]");
+    if(!box)return;
+    const per=p/n;
+    box.textContent=rate?`За занятие: ${money(per)} ₽ · ставка педагога: ${money(rate)} ₽ · маржа с занятия: ${money(per-rate)} ₽ (${per?Math.round((per-rate)/per*100):0}%) при индивидуальном занятии`
+      :`За занятие: ${money(per)} ₽. Выберите педагога со ставкой, чтобы увидеть маржу.`;
+  };
+  l.querySelectorAll('[name="lessons"],[name="price"],[name="teacherId"]').forEach(e=>{e.oninput=e.onchange=calc;});
+  calc();
+}
+function readTariff(l,base={}){
+  return Object.assign(base,{name:val(l,"name"),lessons:Math.max(1,parseNum(val(l,"lessons"))||1),price:parseNum(val(l,"price")),
+    validDays:Math.max(0,parseNum(val(l,"validDays"))),format:val(l,"format"),direction:val(l,"direction"),subject:val(l,"subject"),
+    teacherId:val(l,"teacherId"),article:val(l,"article"),note:val(l,"note")});
+}
+function newTariff(){
+  const m=modal("Новый шаблон абонемента",tariffForm(),async(l)=>{const n=val(l,"name");if(!n){toast("Укажите название");return false;}
+    if(S.tariffs.some(x=>x.name.toLowerCase()===n.toLowerCase())){toast("Такое название уже есть");return false;}
+    S.tariffs.push(readTariff(l,{id:uid("tr"),archived:false}));await saveTariffs();toast("Шаблон добавлен");},"Добавить");
+  bindTariffForm(m.layer);
+}
+function editTariff(id){
+  const t=tariff(id);if(!t)return;
+  const m=modal("Шаблон абонемента",tariffForm(t),async(l)=>{const n=val(l,"name");if(!n){toast("Укажите название");return false;}
+    if(S.tariffs.some(x=>x.id!==id&&x.name.toLowerCase()===n.toLowerCase())){toast("Такое название уже есть");return false;}
+    readTariff(l,t);t.archived=chk(l,"archived");await saveTariffs();toast("Сохранено");});
+  bindTariffForm(m.layer);
+}
+async function delTariff(id){
+  const t=tariff(id);if(!t)return;
+  if(tplSold(id)){
+    if(!confirm("Этот абонемент уже продавался, поэтому он будет перенесён в архив. Продолжить?"))return;
+    t.archived=true;if(await saveTariffs())toast("Перенесён в архив");
+  } else {
+    if(!confirm("Удалить шаблон абонемента?"))return;
+    S.tariffs=S.tariffs.filter(x=>x.id!==id);if(await saveTariffs())toast("Удалено");
+  }
+  render();
+}
+
+/* --- продажа абонемента (из каталога, из карточки ученика или вручную) --- */
+function newAbon(preStudent,preTariff){
+  const r=R(),tpls=tplList().filter(t=>true);
+  if(preTariff&&!tpls.some(t=>t.id===preTariff)&&tariff(preTariff))tpls.push(tariff(preTariff));
+  const m=modal("Продажа абонемента",`
+   <label class="f"><span>Шаблон абонемента</span><select name="tariffId"><option value="">— без шаблона, ввести вручную —</option>${tpls.map(t=>`<option value="${t.id}" ${t.id===preTariff?"selected":""}>${esc(t.name)} · ${t.lessons} зан. · ${money(t.price)} ₽</option>`).join("")}</select></label>
+   <div class="grid2">
      <label class="f"><span>Ученик</span><select name="studentId">${optId(S.students,preStudent)}</select></label>
-     <label class="f"><span>Тариф</span><select name="tariffId">${optId(S.tariffs)}</select></label>
+     <label class="f"><span>Дата продажи</span><input type="date" name="date" value="${today()}"></label>
    </div>
    <div class="grid2">
-     <label class="f"><span>Количество занятий</span><input type="number" name="lessons" value="8"></label>
+     <label class="f"><span>Количество занятий</span><input type="number" name="lessons" min="1" value="8"></label>
      <label class="f"><span>Сумма, ₽</span><input type="number" name="price" value=""></label>
    </div>
+   <div class="hint" data-sale-info></div>
    <div class="grid3">
      <label class="f"><span>Направление</span><select name="direction">${opt(r.directions.map(d=>d.name))}</select></label>
      <label class="f"><span>Предмет</span><select name="subject">${opt(r.subjects)}</select></label>
      <label class="f"><span>Педагог</span><select name="teacherId">${optId(S.teachers)}</select></label>
    </div>
    <div class="grid2">
+     <label class="f"><span>Формат</span><select name="format">${optE(r.formats,"","— не указан —")}</select></label>
      <label class="f"><span>Действует до</span><input type="date" name="until"></label>
-     <div class="hint" style="align-self:end;padding-bottom:8px">Если срок не ограничен, оставьте поле пустым.</div>
    </div>
    <label class="row" style="align-items:center;gap:8px"><input type="checkbox" name="pay" checked style="width:auto"><span class="hint">Создать поступление в журнале операций</span></label>
   `,async(l)=>{
     const sid=val(l,"studentId"); if(!sid){toast("Выберите ученика");return false;}
     const tid=val(l,"tariffId"),t=tariff(tid);
     const lessons=Math.max(1,parseNum(val(l,"lessons"))||(t?t.lessons:1));
-    const price=parseNum(val(l,"price"))||(t?t.price:0);
+    const price=parseNum(val(l,"price"));
     const a={id:uid("ab"),date:val(l,"date")||today(),studentId:sid,tariffId:tid,name:t?t.name:`Абонемент на ${lessons} занятий`,
-      lessons,price,direction:val(l,"direction"),subject:val(l,"subject"),teacherId:val(l,"teacherId"),until:val(l,"until"),visits:[]};
-    const m=pushAbon(a);
+      lessons,price,direction:val(l,"direction"),subject:val(l,"subject"),teacherId:val(l,"teacherId"),format:val(l,"format"),until:val(l,"until"),visits:[]};
+    const mo=pushAbon(a);
     if(chk(l,"pay")&&price){
-      const art=(R().articles.find(x=>x.name===a.name)||{}).name||(R().articles.find(x=>x.kind==="income")||{}).name||"Прочие доходы";
-      const o={id:uid("op"),date:a.date,type:"income",amount:price,article:art,direction:a.direction,subject:a.subject,
-        source:"",studentId:sid,teacherId:a.teacherId,note:a.name,abonId:a.id,fisc:false};
-      pushOp(o);
+      const inc=R().articles.filter(x=>x.kind==="income").map(x=>x.name);
+      const art=(t&&t.article&&inc.includes(t.article)&&t.article)||inc.find(x=>x===a.name)||inc[0]||"Прочие доходы";
+      pushOp({id:uid("op"),date:a.date,type:"income",amount:price,article:art,direction:a.direction,subject:a.subject,
+        source:"",studentId:sid,teacherId:a.teacherId,note:a.name,abonId:a.id,fisc:false});
     }
-    await saveMonth(m); toast("Абонемент продан");
-  },"Продать");
-  const l=document.getElementById("layer");
-  const ts=l.querySelector('[name="tariffId"]');
-  ts.onchange=()=>{const t=tariff(ts.value);if(!t)return;l.querySelector('[name="lessons"]').value=t.lessons;l.querySelector('[name="price"]').value=t.price;};
+    await saveMonth(mo); toast("Абонемент выставлен");
+  },"Выставить");
+  const l=m.layer,ts=l.querySelector('[name="tariffId"]'),dt=l.querySelector('[name="date"]'),un=l.querySelector('[name="until"]'),pr=l.querySelector('[name="price"]'),ls=l.querySelector('[name="lessons"]'),info=l.querySelector("[data-sale-info]");
+  let untilTouched=false;
+  const setSel=(n,v)=>{const e=l.querySelector(`[name="${n}"]`);if(e&&v&&[...e.options].some(o=>o.value===v))e.value=v;};
+  const upd=()=>{
+    const t=tariff(ts.value),p=parseNum(pr.value),n=Math.max(1,parseNum(ls.value)||1);
+    let s=`За занятие: ${money(p/n)} ₽.`;
+    if(t&&t.price&&p!==t.price&&t.lessons===n){const d=t.price-p;s+=d>0?` Скидка к цене шаблона: ${money(d)} ₽ (${Math.round(d/t.price*100)}%).`:` Выше цены шаблона на ${money(-d)} ₽.`;}
+    info.textContent=p?s:"";
+  };
+  const untilFromTpl=()=>{const t=tariff(ts.value);if(!untilTouched&&t&&t.validDays)un.value=addDays(dt.value,t.validDays);};
+  ts.onchange=()=>{const t=tariff(ts.value);if(!t){upd();return;}
+    ls.value=t.lessons;pr.value=t.price;setSel("direction",t.direction);setSel("subject",t.subject);setSel("teacherId",t.teacherId);setSel("format",t.format);
+    untilTouched=false;un.value=t.validDays?addDays(dt.value,t.validDays):"";upd();};
+  dt.onchange=untilFromTpl;un.oninput=()=>{untilTouched=true;};
+  pr.oninput=ls.oninput=upd;
+  if(ts.value)ts.onchange();
 }
 /* --- списание занятия --- */
 function visitAbon(id){
@@ -1469,11 +1636,16 @@ async function exportOps(){
   await download(`Операции_Уникум_${S.year}.xlsx`,new Uint8Array(out));
 }
 async function exportReport(){
-  const tbl=document.querySelector("#repbody table"); if(!tbl){toast("Отчёт пуст");return;}
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.table_to_sheet(tbl),"Отчёт");
+  const tbls=[...document.querySelectorAll("#repbody table")]; if(!tbls.length){toast("Отчёт пуст");return;}
+  const wb=XLSX.utils.book_new(),used=new Set();
+  tbls.forEach((tbl,i)=>{
+    const h=tbl.closest("div.tw")&&tbl.closest("div.tw").parentElement.querySelector("h3");
+    let n=((h&&h.textContent)||"Отчёт").replace(/[\\\/?*\[\]:]/g," ").slice(0,28).trim()||"Отчёт";
+    while(used.has(n))n=n.slice(0,25)+" "+(i+1);
+    used.add(n);XLSX.utils.book_append_sheet(wb,XLSX.utils.table_to_sheet(tbl),n);
+  });
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-  const names={bdds:"БДДС",bdr:"БДР",abon:"Абонементы",pl:"P&L",ros:"Рентабельность",tax:"Налоги"};
+  const names={bdds:"БДДС",bdr:"БДР",abon:"Абонементы",pl:"P&L",ros:"Рентабельность центра",unit:"Рентабельность детально",tax:"Налоги"};
   await download(`${names[S.repTab]}_Уникум_${S.year}.xlsx`,new Uint8Array(out));
 }
 async function backup(){
@@ -1509,10 +1681,13 @@ function bind(root){
         case "del-visit":if(confirm("Отменить списание занятия?"))delVisit(id,+i);break;
         case "add-teacher":newTeacher();break;
         case "edit-teacher":editTeacher(id);break;
-        case "del-teacher":if(confirm("Удалить педагога?")){S.teachers=S.teachers.filter(x=>x.id!==id);if(await saveTeachers())toast("Удалено");render();}break;
+        case "del-teacher":delTeacher(id);break;
         case "add-tariff":newTariff();break;
         case "edit-tariff":editTariff(id);break;
-        case "del-tariff":if(confirm("Удалить тариф?")){S.tariffs=S.tariffs.filter(x=>x.id!==id);if(await saveTariffs())toast("Удалено");render();}break;
+        case "del-tariff":delTariff(id);break;
+        case "sell-tpl":newAbon("",id);break;
+        case "tpl-archive":{const t=tariff(id);if(t){t.archived=!t.archived;if(await saveTariffs())toast(t.archived?"Перенесён в архив":"Возвращён в каталог");render();}}break;
+        case "toggle-arch":S.arch=S.arch||{};S.arch[id]=!S.arch[id];render();break;
         case "save-par":savePar(root);break;
         case "add-member":inviteMember();break;
         case "del-member":if(confirm("Закрыть доступ для "+id+"? Человек больше не сможет открыть базу центра.")){ if(await removeMember(id)){toast("Доступ закрыт");render();} }break;

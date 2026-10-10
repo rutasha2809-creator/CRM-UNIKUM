@@ -157,3 +157,11 @@ tr.sub td:first-child{padding-left:28px;color:var(--ink-2)}
 @media(max-width:900px){.nsi{grid-template-columns:minmax(0,1fr)}.nsi-menu{position:static;flex-direction:row;flex-wrap:wrap;gap:4px}.nsi-find{width:100%}.nsi-grp{display:none}.nsi-head .tools input[type=search]{width:100%}}
 .grid2>*,.grid3>*{min-width:0}
 @media(max-width:700px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
+
+/* каталог абонементов */
+.cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;padding:14px 16px}
+.tpl{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:4px;min-width:0}
+.tpl-n{font-weight:600;overflow-wrap:anywhere}
+.tpl-p{font-family:"IBM Plex Mono",monospace;font-size:20px;font-weight:600}
+.tpl-m{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+.tpl-b{margin-top:auto;padding-top:6px;display:flex;gap:6px}
