@@ -66,10 +66,16 @@ function abBreak(a){
   return null;
 }
 /* активный абонемент ученика на дату: не просрочен, есть остаток, приоритет — совпадение направления, затем самый ранний */
-function pickAbon(studentId,direction,onDate){
+function pickAbon(studentId,direction,onDate,subject){
   const list=allAbon().filter(a=>a.studentId===studentId&&abLeft(a)>0&&!abExpired(a,onDate)&&(a.date||"")<=(onDate||today()));
   if(!list.length)return null;
-  const same=list.filter(a=>direction&&a.direction===direction);
+  let same=list.filter(a=>direction&&a.direction===direction);
+  /* внутри направления: сначала абонемент именно по этому предмету, затем «Единый» или без предмета, затем любой */
+  if(same.length>1&&subject){
+    const exact=same.filter(a=>a.subject===subject);
+    const shared=same.filter(a=>!a.subject||a.subject==="Единый"||a.subject==="Без привязки");
+    same=exact.length?exact:(shared.length?shared:same);
+  }
   return (same.length?same:list).sort((a,b)=>(a.date||"").localeCompare(b.date||""))[0];
 }
 
@@ -483,7 +489,7 @@ function groupCard(g,date,already){
     </div>
     ${studs.length?`<div class="pad" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px">
       ${studs.map(s=>{
-        const ab=pickAbon(s.id,g.direction,date);
+        const ab=pickAbon(s.id,g.direction,date,g.subject);
         const exp=allAbon().some(a=>a.studentId===s.id&&abExpired(a,date));
         return `<label class="row" style="align-items:center;gap:8px;border:1px solid var(--line-soft);border-radius:8px;padding:7px 10px;${already?"opacity:.6":""}">
           <input type="checkbox" data-att="${g.id}" value="${s.id}" ${ab&&!already?"checked":""} ${already?"disabled":""} style="width:auto">
@@ -503,7 +509,7 @@ async function conductGroup(gid,root){
 async function conduct({date,groupId,name,direction,subject,teacherId,studentIds,note}){
   const touched=new Set(), lesson={id:uid("les"),date,groupId:groupId||"",name,direction:direction||"",subject:subject||"",teacherId:teacherId||"",note:note||"",attend:[]};
   studentIds.forEach(sid=>{
-    const ab=pickAbon(sid,direction,date);
+    const ab=pickAbon(sid,direction,date,subject);
     if(ab){
       ab.visits.push({date,teacherId:teacherId||ab.teacherId||"",note:note||name,lessonId:lesson.id,groupId:groupId||""});
       lesson.attend.push({studentId:sid,abonId:ab.id,price:abPrice(ab)});
@@ -545,7 +551,7 @@ function singleLesson(){
   `,async(l)=>{
     const sid=val(l,"studentId"); if(!sid){toast("Выберите ученика");return false;}
     const date=val(l,"date")||S.lesDate;
-    const ab=pickAbon(sid,val(l,"direction"),date);
+    const ab=pickAbon(sid,val(l,"direction"),date,val(l,"subject"));
     if(!ab&&!confirm("У ученика нет действующего абонемента на эту дату. Провести занятие без списания?"))return false;
     await conduct({date,name:"Индивидуальное занятие",direction:val(l,"direction"),subject:val(l,"subject"),
       teacherId:val(l,"teacherId"),studentIds:[sid],note:val(l,"note")});
