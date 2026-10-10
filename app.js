@@ -49,22 +49,44 @@ const opsOfYear=(y)=>allOps().filter(o=>o.date&&+o.date.slice(0,4)===y);
 const yearsWithData=()=>{const set=new Set([new Date().getFullYear()]);allOps().forEach(o=>o.date&&set.add(+o.date.slice(0,4)));allAbon().forEach(a=>a.date&&set.add(+a.date.slice(0,4)));return [...set].sort();};
 
 /* абонемент: остаток и стоимость занятия */
-const abUnused=(a)=>Math.max(0,(a.lessons||0)-((a.visits||[]).length));           // не использовано занятий (в т.ч. по закрытому)
-const abLeft=(a)=>a.closedAt?0:abUnused(a);                                           // доступно к списанию
-const abPrice=(a)=>a.lessons?(a.price||0)/a.lessons:(a.price||0);
-const abExpired=(a,onDate)=>!!(!a.closedAt&&a.until&&a.until<(onDate||today())&&abUnused(a)>0);
+/* пропуски: занятие не состоялось по причине, которая переносит его в стоимость следующего абонемента (carry), либо сгорает (без предупреждения) */
+const ABS_REASONS=[
+  {k:"center",t:"Центр или педагог",carry:true},
+  {k:"early",t:"Ученик заранее",carry:true},
+  {k:"valid",t:"Уважительная причина",carry:true},
+  {k:"late",t:"Ученик без предупреждения",carry:false}
+];
+const absReason=(k)=>ABS_REASONS.find(r=>r.k===k)||ABS_REASONS[0];
+const abAbsences=(a)=>a.absences||[];
+const abApplied=(a)=>abAbsences(a).filter(x=>x.carry&&x.usedIn).length;               // перенесено в другие абонементы
+const abPending=(a)=>abAbsences(a).filter(x=>x.carry&&!x.usedIn).length;              // ждут следующего абонемента
+const abUnused=(a)=>Math.max(0,(a.lessons||0)-((a.visits||[]).length)-abApplied(a));   // не использовано занятий (в т.ч. по закрытому)
+const abFree=(a)=>Math.max(0,abUnused(a)-abPending(a));                               // свободно для занятий: без ожидающих переноса
+const abLeft=(a)=>a.closedAt?0:abFree(a);                                             // доступно к списанию
+const abPrice=(a)=>a.lessons?((a.price||0)+(a.carryValue||0))/a.lessons:(a.price||0);  // стоимость занятия с учётом перенесённых занятий
+const abExpired=(a,onDate)=>!!(!a.closedAt&&a.until&&a.until<(onDate||today())&&abFree(a)>0);
 const abLive=(a,onDate)=>abLeft(a)>0&&!abExpired(a,onDate);                           // действующий: есть остаток и срок не истёк
-const abDebtSum=(a)=>abLive(a)?abLeft(a)*abPrice(a):0;                                // обязательство центра перед учеником
+const abDebtSum=(a)=>(abLive(a)?abLeft(a):0)*abPrice(a)+(a.closedAt?0:abPending(a))*abPrice(a); // обязательство центра перед учеником
+/* перенесённые занятия ученика, которые ещё не учтены в новом абонементе */
+const carryAvail=(studentId)=>allAbon().filter(a=>a.studentId===studentId&&!a.closedAt)
+  .flatMap(a=>abAbsences(a).filter(x=>x.carry&&!x.usedIn).map(x=>({a,x}))).sort((p,q)=>(p.x.date||"").localeCompare(q.x.date||""));
 const abPaid=(a)=>allOps().filter(o=>o.abonId===a.id&&o.type==="income").reduce((s,o)=>s+o.amount,0);
 const abOwed=(a)=>Math.max(0,(a.price||0)-abPaid(a));                                 // долг ученика по оплате
 /* остаток, который не будет отработан: срок истёк или абонемент закрыт — признаётся выручкой центра в этот день */
 function abBreak(a){
-  const left=abUnused(a); if(!left)return null;
-  const val=left*abPrice(a);
-  if(a.closedAt)return {date:a.closedAt,amount:Math.max(0,val-(a.refund||0)),val,kind:"closed"};
-  if(abExpired(a))return {date:a.until,amount:val,val,kind:"expired"};
+  if(a.closedAt){const left=abUnused(a); if(!left)return null; const val=left*abPrice(a); return {date:a.closedAt,amount:Math.max(0,val-(a.refund||0)),val,kind:"closed"};}
+  if(abExpired(a)){const left=abFree(a),val=left*abPrice(a); return {date:a.until,amount:val,val,kind:"expired"};}
   return null;
 }
+/* пропуск с переносом: занятие остаётся на абонементе и вычитается из стоимости следующего. Возвращает месяц абонемента, "dup" или null (нет абонемента) */
+function addAbsence({studentId,date,reasonKey,groupId,group,direction,subject,whole,note}){
+  const ab=pickAbon(studentId,direction,date,subject); if(!ab)return null;
+  const gid=groupId||"";
+  if(abAbsences(ab).some(x=>x.date===date&&(x.groupId||"")===gid&&(gid||x.note===(note||""))))return "dup";
+  (ab.absences=ab.absences||[]).push({id:uid("abs"),date,reason:reasonKey,carry:true,groupId:gid,group:group||"",whole:!!whole,note:note||"",usedIn:""});
+  const f=findAbon(ab.id); return f?f.m:null;
+}
+const wholeAbsences=(gid,date)=>allAbon().flatMap(a=>abAbsences(a).filter(x=>x.whole&&x.groupId===gid&&x.date===date).map(x=>({a,x})));
 /* активный абонемент ученика на дату: не просрочен, есть остаток, приоритет — совпадение направления, затем самый ранний */
 function pickAbon(studentId,direction,onDate,subject){
   const list=allAbon().filter(a=>a.studentId===studentId&&abLeft(a)>0&&!abExpired(a,onDate)&&(a.date||"")<=(onDate||today()));
@@ -99,8 +121,8 @@ const rowGroup = (r) => ({ id: r.id, name: r.name, direction: r.direction || "",
 const outGroup = (g) => ({ id: g.id, name: g.name, direction: g.direction || "", subject: g.subject || "", teacher_id: g.teacherId || null, time: g.time || "", days: g.days || [], student_ids: g.studentIds || [] });
 const rowOp = (r) => ({ id: r.id, date: r.date, type: r.type, amount: +r.amount || 0, article: r.article || "", direction: r.direction || "", subject: r.subject || "", source: r.source || "", studentId: r.student_id || "", teacherId: r.teacher_id || "", abonId: r.abon_id || "", note: r.note || "", fisc: !!r.fisc, imported: !!r.imported });
 const outOp = (o) => ({ id: o.id, date: o.date, type: o.type, amount: +o.amount || 0, article: o.article || "", direction: o.direction || "", subject: o.subject || "", source: o.source || "", student_id: o.studentId || null, teacher_id: o.teacherId || null, abon_id: o.abonId || null, note: o.note || "", fisc: !!o.fisc, imported: !!o.imported });
-const rowAbon = (r) => ({ id: r.id, date: r.date, studentId: r.student_id || "", tariffId: r.tariff_id || "", name: r.name, lessons: r.lessons, price: +r.price || 0, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", until: r.until || "", format: r.format || "", listPrice: r.list_price == null ? null : +r.list_price, note: r.note || "", closedAt: r.closed_at || "", refund: +r.refund || 0, visits: [] });
-const outAbon = (a) => ({ id: a.id, date: a.date, student_id: a.studentId || null, tariff_id: a.tariffId || null, name: a.name, lessons: a.lessons || 1, price: +a.price || 0, direction: a.direction || "", subject: a.subject || "", teacher_id: a.teacherId || null, until: a.until || null, format: a.format || "", list_price: a.listPrice == null ? null : +a.listPrice, note: a.note || "", closed_at: a.closedAt || null, refund: +a.refund || 0 });
+const rowAbon = (r) => ({ id: r.id, date: r.date, studentId: r.student_id || "", tariffId: r.tariff_id || "", name: r.name, lessons: r.lessons, price: +r.price || 0, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", until: r.until || "", format: r.format || "", listPrice: r.list_price == null ? null : +r.list_price, note: r.note || "", closedAt: r.closed_at || "", refund: +r.refund || 0, absences: Array.isArray(r.absences) ? r.absences : [], carryValue: +r.carry_value || 0, carryFrom: Array.isArray(r.carry_from) ? r.carry_from : [], visits: [] });
+const outAbon = (a) => ({ id: a.id, date: a.date, student_id: a.studentId || null, tariff_id: a.tariffId || null, name: a.name, lessons: a.lessons || 1, price: +a.price || 0, direction: a.direction || "", subject: a.subject || "", teacher_id: a.teacherId || null, until: a.until || null, format: a.format || "", list_price: a.listPrice == null ? null : +a.listPrice, note: a.note || "", closed_at: a.closedAt || null, refund: +a.refund || 0, absences: a.absences || [], carry_value: +a.carryValue || 0, carry_from: a.carryFrom || [] });
 const rowLesson = (r) => ({ id: r.id, date: r.date, groupId: r.group_id || "", name: r.name, direction: r.direction || "", subject: r.subject || "", teacherId: r.teacher_id || "", note: r.note || "", attend: r.attend || [] });
 const outLesson = (l) => ({ id: l.id, date: l.date, group_id: l.groupId || null, name: l.name, direction: l.direction || "", subject: l.subject || "", teacher_id: l.teacherId || null, note: l.note || "", attend: l.attend || [] });
 
@@ -458,12 +480,12 @@ function viewLessons(v){
       </tbody></table></div></div>`:""}
 
     <div class="panel"><header><h2>Занятия на ${esc(WD[wd])}</h2><span class="sub">${scheduled.length} групп по расписанию</span></header>
-      ${scheduled.length?`<div class="pad stack">${scheduled.map(g=>groupCard(g,d,doneGroups.has(g.id))).join("")}</div>`
+      ${scheduled.length?`<div class="pad stack">${scheduled.map(g=>groupCard(g,d,doneGroups.has(g.id),wholeAbsences(g.id,d).length>0)).join("")}</div>`
         :`<div class="empty">На ${WD[wd]} групп в расписании нет. Задайте дни занятий во вкладке «Группы» или проведите занятие из списка ниже.</div>`}
     </div>
 
     ${others.length?`<div class="panel"><header><h2>Остальные группы</h2><span class="sub">не по расписанию — можно провести вручную</span></header>
-      <div class="pad stack">${others.map(g=>groupCard(g,d,doneGroups.has(g.id))).join("")}</div></div>`:""}
+      <div class="pad stack">${others.map(g=>groupCard(g,d,doneGroups.has(g.id),wholeAbsences(g.id,d).length>0)).join("")}</div></div>`:""}
   </div>`;
   bind(v); bindLesTabs(v);
   const di=v.querySelector("#les-date");
@@ -475,25 +497,37 @@ function viewLessons(v){
     render();
   });
   v.querySelectorAll("[data-conduct]").forEach(b=>b.onclick=()=>conductGroup(b.dataset.conduct,v));
+  v.querySelectorAll("[data-gcancel]").forEach(b=>b.onclick=()=>cancelGroupLesson(b.dataset.gcancel));
+  v.querySelectorAll("[data-gundo]").forEach(b=>b.onclick=()=>{if(confirm("Вернуть занятие в план? Перенос у учеников будет снят."))undoGroupCancel(b.dataset.gundo);});
+  /* причина пропуска показывается только у тех, кого сняли с отметки */
+  v.querySelectorAll("input[data-att]").forEach(cb=>{
+    const sel=v.querySelector(`select[data-abs="${cb.dataset.att}"][data-sid="${cb.value}"]`);
+    if(!sel)return;
+    const sync=()=>{sel.style.display=cb.checked||cb.disabled?"none":"";if(cb.checked)sel.value="";};
+    cb.addEventListener("change",sync);sync();
+  });
 }
 function bindLesTabs(v){ v.querySelectorAll("[data-les]").forEach(b=>b.onclick=()=>{S.lesTab=b.dataset.les;render();}); }
 
-function groupCard(g,date,already){
+function groupCard(g,date,already,cancelled){
   const studs=(g.studentIds||[]).map(id=>S.students.find(s=>s.id===id)).filter(Boolean);
   return `<div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
     <div class="row" style="align-items:center;justify-content:space-between;padding:11px 14px;background:var(--surface-2);gap:10px">
       <div><b>${esc(g.name)}</b> ${g.time?`<span class="chip mut">${esc(g.time)}</span>`:""}
         <div class="hint">${esc(g.direction||"без направления")} · ${esc(teacherName(g.teacherId)||"педагог не указан")} · ${(g.days||[]).map(x=>WD_SHORT[x]).join(", ")||"без расписания"}</div></div>
       ${already?`<span class="chip in">занятие проведено</span>`
-        :`<button class="btn primary" data-conduct="${g.id}">Провести занятие</button>`}
+        :cancelled?`<span class="chip warn">занятие отменено</span> <button class="btn" data-gundo="${g.id}">Вернуть в план</button>`
+        :`<span class="row" style="gap:6px"><button class="btn" data-gcancel="${g.id}">Отменить занятие</button><button class="btn primary" data-conduct="${g.id}">Провести занятие</button></span>`}
     </div>
     ${studs.length?`<div class="pad" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px">
       ${studs.map(s=>{
         const ab=pickAbon(s.id,g.direction,date,g.subject);
         const exp=allAbon().some(a=>a.studentId===s.id&&abExpired(a,date));
-        return `<label class="row" style="align-items:center;gap:8px;border:1px solid var(--line-soft);border-radius:8px;padding:7px 10px;${already?"opacity:.6":""}">
-          <input type="checkbox" data-att="${g.id}" value="${s.id}" ${ab&&!already?"checked":""} ${already?"disabled":""} style="width:auto">
+        const off=already||cancelled;
+        return `<label class="row" style="align-items:center;gap:8px;border:1px solid var(--line-soft);border-radius:8px;padding:7px 10px;${off?"opacity:.6":""}">
+          <input type="checkbox" data-att="${g.id}" value="${s.id}" ${ab&&!off?"checked":""} ${off?"disabled":""} style="width:auto">
           <span style="flex:1">${esc(s.name)}</span>
+          ${ab&&!off?`<select data-abs="${g.id}" data-sid="${s.id}" style="display:none;width:auto;max-width:160px;font-size:12px;padding:3px 6px"><option value="">не пришёл: причина</option>${ABS_REASONS.map(r=>`<option value="${r.k}">${r.t}</option>`).join("")}</select>`:""}
           ${ab?`<span class="chip ${abLeft(ab)<=2?"warn":"mut"}">${abLeft(ab)} зан.</span>`
              :`<span class="chip out">${exp?"просрочен":"нет абонемента"}</span>`}
         </label>`;}).join("")}
@@ -503,23 +537,72 @@ function groupCard(g,date,already){
 async function conductGroup(gid,root){
   const g=groupById(gid); if(!g)return;
   const ids=[...root.querySelectorAll(`[data-att="${gid}"]:checked`)].map(i=>i.value);
-  if(!ids.length){toast("Отметьте хотя бы одного ученика");return;}
-  await conduct({date:S.lesDate,groupId:g.id,name:g.name,direction:g.direction,subject:g.subject,teacherId:g.teacherId,studentIds:ids});
+  /* не пришедшие: причина решает, переносится занятие или списывается */
+  const why=[...root.querySelectorAll(`select[data-abs="${gid}"]`)].map(e=>({sid:e.dataset.sid,k:e.value})).filter(x=>x.k&&!ids.includes(x.sid));
+  const lateIds=why.filter(x=>!absReason(x.k).carry).map(x=>x.sid);
+  const carry=why.filter(x=>absReason(x.k).carry);
+  if(!ids.length&&!lateIds.length&&!carry.length){toast("Отметьте хотя бы одного ученика");return;}
+  const touched=new Set();let carried=0;
+  carry.forEach(x=>{const r=addAbsence({studentId:x.sid,date:S.lesDate,reasonKey:x.k,groupId:g.id,group:g.name,direction:g.direction,subject:g.subject});if(r&&r!=="dup"){touched.add(r);carried++;}});
+  if(ids.length||lateIds.length)await conduct({date:S.lesDate,groupId:g.id,name:g.name,direction:g.direction,subject:g.subject,teacherId:g.teacherId,studentIds:ids,lateIds,touched,carried});
+  else{
+    let ok=true;for(const m of touched)if(!(await saveMonth(m)))ok=false;
+    if(ok)toast(carried?`Перенесено занятий: ${carried}`:"Пропуск уже был отмечен");
+    render();
+  }
 }
-async function conduct({date,groupId,name,direction,subject,teacherId,studentIds,note}){
-  const touched=new Set(), lesson={id:uid("les"),date,groupId:groupId||"",name,direction:direction||"",subject:subject||"",teacherId:teacherId||"",note:note||"",attend:[]};
-  studentIds.forEach(sid=>{
+async function conduct({date,groupId,name,direction,subject,teacherId,studentIds,lateIds,note,touched,carried}){
+  touched=touched||new Set();lateIds=lateIds||[];
+  const lesson={id:uid("les"),date,groupId:groupId||"",name,direction:direction||"",subject:subject||"",teacherId:teacherId||"",note:note||"",attend:[]};
+  let wo=0;
+  const take=(sid,vnote,onlyAbon)=>{
     const ab=pickAbon(sid,direction,date,subject);
     if(ab){
-      ab.visits.push({date,teacherId:teacherId||ab.teacherId||"",note:note||name,lessonId:lesson.id,groupId:groupId||""});
+      ab.visits.push({date,teacherId:teacherId||ab.teacherId||"",note:vnote,lessonId:lesson.id,groupId:groupId||""});
       lesson.attend.push({studentId:sid,abonId:ab.id,price:abPrice(ab)});
       const f=findAbon(ab.id); if(f)touched.add(f.m);
-    } else lesson.attend.push({studentId:sid,abonId:"",price:0});
-  });
+      return true;
+    }
+    if(!onlyAbon)lesson.attend.push({studentId:sid,abonId:"",price:0});
+    return false;
+  };
+  studentIds.forEach(sid=>take(sid,note||name,false));
+  lateIds.forEach(sid=>{if(take(sid,"Пропуск без предупреждения",true))wo++;});
   touched.add(pushLesson(lesson));
-  for(const m of touched) await saveMonth(m);
+  let ok=true;for(const m of touched) if(!(await saveMonth(m)))ok=false;
   const off=lesson.attend.filter(a=>a.abonId).length, no=lesson.attend.length-off;
-  toast(no?`Списано занятий: ${off}. Без абонемента: ${no}`:`Занятие проведено, списано занятий: ${off}`);
+  if(ok)toast((no?`Списано занятий: ${off}. Без абонемента: ${no}`:`Занятие проведено, списано занятий: ${off}`)+(wo?` (из них без предупреждения: ${wo})`:"")+(carried?`. Перенесено: ${carried}`:""));
+  render();
+}
+/* отмена занятия группы целиком: у всех учеников занятие остаётся на абонементе и переносится */
+function cancelGroupLesson(gid){
+  const g=groupById(gid); if(!g)return; const date=S.lesDate;
+  modal("Отменить занятие · "+g.name,`
+   <div class="grid2">
+     <label class="f"><span>Дата</span><input type="date" name="date" value="${esc(date)}"></label>
+     <label class="f"><span>Причина</span><select name="reason">${ABS_REASONS.filter(r=>r.carry).map(r=>`<option value="${r.k}">${r.t}</option>`).join("")}</select></label>
+   </div>
+   <label class="f"><span>Комментарий</span><input name="note" placeholder="болезнь педагога, каникулы"></label>
+  `,async(l)=>{
+    const d=val(l,"date")||date, rk=val(l,"reason")||"center";
+    if(lessonsOn(d).some(x=>x.groupId===g.id)){toast("На эту дату занятие группы уже проведено");return false;}
+    const touched=new Set();let n=0,none=0;
+    (g.studentIds||[]).forEach(sid=>{
+      const r=addAbsence({studentId:sid,date:d,reasonKey:rk,groupId:g.id,group:g.name,direction:g.direction,subject:g.subject,whole:true,note:val(l,"note")});
+      if(r==="dup")return; if(r){touched.add(r);n++;}else none++;
+    });
+    if(!n){toast(none?"У учеников группы нет действующих абонементов — переносить нечего":"Занятие уже отменено");return false;}
+    let ok=true;for(const m of touched)if(!(await saveMonth(m)))ok=false;
+    if(ok)toast(`Занятие отменено, перенесено у учеников: ${n}`+(none?`. Без абонемента: ${none}`:""));
+  },"Отменить занятие");
+}
+async function undoGroupCancel(gid){
+  const list=wholeAbsences(gid,S.lesDate); if(!list.length)return;
+  if(list.some(({x})=>x.usedIn)){toast("Часть занятий уже учтена в новых абонементах — сначала уберите перенос там");return;}
+  const months=new Set();
+  list.forEach(({a,x})=>{a.absences=a.absences.filter(y=>y!==x);const f=findAbon(a.id);if(f)months.add(f.m);});
+  let ok=true;for(const m of months)if(!(await saveMonth(m)))ok=false;
+  if(ok)toast("Занятие возвращено в план");
   render();
 }
 async function cancelLesson(id){
@@ -547,14 +630,25 @@ function singleLesson(){
      <label class="f"><span>Направление</span><select name="direction">${opt(R().directions.map(x=>x.name))}</select></label>
      <label class="f"><span>Предмет</span><select name="subject">${opt(R().subjects)}</select></label>
    </div>
-   <label class="f"><span>Комментарий</span><input name="note" placeholder="тема занятия"></label>
+   <div class="grid2">
+     <label class="f"><span>Итог</span><select name="outcome"><option value="">Занятие проведено</option>${ABS_REASONS.map(r=>`<option value="${r.k}">Не состоялось: ${r.t.toLowerCase()}</option>`).join("")}</select></label>
+     <label class="f"><span>Комментарий</span><input name="note" placeholder="тема занятия"></label>
+   </div>
   `,async(l)=>{
     const sid=val(l,"studentId"); if(!sid){toast("Выберите ученика");return false;}
     const date=val(l,"date")||S.lesDate;
+    const oc=val(l,"outcome");
+    if(oc&&absReason(oc).carry){
+      const r=addAbsence({studentId:sid,date,reasonKey:oc,groupId:"",group:"Индивидуальное занятие",direction:val(l,"direction"),subject:val(l,"subject"),note:val(l,"note")});
+      if(r==="dup"){toast("Этот пропуск уже отмечен");return false;}
+      if(!r){toast("У ученика нет действующего абонемента — переносить нечего");return false;}
+      if(await saveMonth(r))toast("Занятие перенесено на следующий абонемент");
+      return;
+    }
     const ab=pickAbon(sid,val(l,"direction"),date,val(l,"subject"));
     if(!ab&&!confirm("У ученика нет действующего абонемента на эту дату. Провести занятие без списания?"))return false;
     await conduct({date,name:"Индивидуальное занятие",direction:val(l,"direction"),subject:val(l,"subject"),
-      teacherId:val(l,"teacherId"),studentIds:[sid],note:val(l,"note")});
+      teacherId:val(l,"teacherId"),studentIds:[sid],note:oc==="late"?"Пропуск без предупреждения"+(val(l,"note")?": "+val(l,"note"):""):val(l,"note")});
   },"Провести");
 }
 /* --- группы --- */
@@ -634,6 +728,7 @@ function catFilter(root){
 function abState(a){
   if(a.closedAt)return {k:"closed",t:"закрыт",cls:"mut"};
   if(abExpired(a))return {k:"expired",t:"срок истёк",cls:"out"};
+  if(abFree(a)<=0&&abPending(a)>0)return {k:"done",t:"отработан, перенос "+abPending(a),cls:"warn"};
   if(abUnused(a)<=0)return {k:"done",t:"отработан",cls:"mut"};
   return {k:"live",t:"действует",cls:"in"};
 }
@@ -1759,6 +1854,10 @@ function newAbon(preStudent,preTariff,preset){
      <label class="f"><span>Скидка, %</span><input type="number" name="discount" min="0" max="100" step="any" value=""></label>
      <label class="f"><span>Сумма к оплате, ₽</span><input type="number" name="price" min="0" value="${pr0.price||""}"></label>
    </div>
+   <div class="grid2" data-carry-wrap style="display:none">
+     <label class="f"><span>Перенос с прошлых абонементов, занятий</span><input type="number" name="carry" min="0" value="0"></label>
+     <div class="hint" data-carry-info style="align-self:end"></div>
+   </div>
    <div class="hint" data-sale-info></div>
    <div class="grid3">
      <label class="f"><span>Направление</span><select name="direction">${opt(r.directions.map(d=>d.name),pr0.direction)}</select></label>
@@ -1777,40 +1876,67 @@ function newAbon(preStudent,preTariff,preset){
     const sid=val(l,"studentId"); if(!sid){toast("Выберите ученика");return false;}
     const tid=val(l,"tariffId"),t=tariff(tid);
     const lessons=Math.max(1,Math.round(parseNum(val(l,"lessons")))||(t?t.lessons:1));
-    const price=Math.max(0,parseNum(val(l,"price")));
+    const gross=Math.max(0,parseNum(val(l,"price")));
+    const avail=carryAvail(sid);
+    const k=Math.min(Math.max(0,Math.round(parseNum(val(l,"carry")))),avail.length,lessons);
+    const price=k?Math.round(gross*(lessons-k)/lessons):gross;
     const paid=Math.max(0,parseNum(val(l,"paid")));
     if(paid>price){toast("Оплата не может быть больше суммы абонемента");return false;}
-    const list=t&&t.lessons?Math.round(t.price/t.lessons*lessons):price;
+    const list0=t&&t.lessons?Math.round(t.price/t.lessons*lessons):gross;
+    const list=k?Math.round(list0*(lessons-k)/lessons):list0;
     const a={id:uid("ab"),date:val(l,"date")||today(),studentId:sid,tariffId:tid,name:t?t.name:(pr0.name||`Абонемент на ${lessons} ${lessonsWord(lessons)}`),
-      lessons,price,listPrice:list,direction:val(l,"direction"),subject:val(l,"subject"),teacherId:val(l,"teacherId"),format:val(l,"format"),until:val(l,"until"),note:val(l,"note"),closedAt:"",refund:0,visits:[]};
-    const mo=pushAbon(a);
+      lessons,price,listPrice:list,direction:val(l,"direction"),subject:val(l,"subject"),teacherId:val(l,"teacherId"),format:val(l,"format"),until:val(l,"until"),note:val(l,"note"),closedAt:"",refund:0,visits:[],
+      absences:[],carryValue:0,carryFrom:[]};
+    /* перенесённые занятия: старейшие первыми; их стоимость остаётся выручкой по цене прошлого абонемента */
+    const months=new Set();
+    avail.slice(0,k).forEach(({a:old,x})=>{
+      a.carryValue+=abPrice(old); a.carryFrom.push({abonId:old.id,absId:x.id}); x.usedIn=a.id;
+      const fo=findAbon(old.id); if(fo)months.add(fo.m);
+    });
+    months.add(pushAbon(a));
     if(paid>0)pushOp(payOp(a,paid,a.date));
-    if(await saveMonth(mo))toast(paid<price?`Абонемент выставлен, долг ${money(price-paid)} ₽`:"Абонемент выставлен");
+    let ok=true;for(const m of months)if(!(await saveMonth(m)))ok=false;
+    if(ok)toast((k?`Перенесено занятий: ${k}. `:"")+(paid<price?`Абонемент выставлен, долг ${money(price-paid)} ₽`:"Абонемент выставлен"));
   },"Выставить");
   const l=m.layer,F=(n)=>l.querySelector(`[name="${n}"]`),ts=F("tariffId"),dt=F("date"),un=F("until"),pr=F("price"),ls=F("lessons"),ds=F("discount"),pd=F("paid"),info=l.querySelector("[data-sale-info]");
+  const sd=F("studentId"),cy=F("carry"),cwrap=l.querySelector("[data-carry-wrap]"),cinfo=l.querySelector("[data-carry-info]");
+  const carryN=()=>{const av=carryAvail(sd.value).length,n=Math.max(1,parseNum(ls.value)||1);return Math.min(Math.max(0,Math.round(parseNum(cy.value))||0),av,n);};
+  const netP=()=>{const g=parseNum(pr.value),n=Math.max(1,parseNum(ls.value)||1),k=carryN();return k?Math.round(g*(n-k)/n):g;};
   let untilTouched=false,paidTouched=false;
   const baseP=()=>{const t=tariff(ts.value),n=Math.max(1,parseNum(ls.value)||1);return t&&t.lessons?Math.round(t.price/t.lessons*n):0;};
   const setSel=(n,v)=>{const e=F(n);if(e&&v&&[...e.options].some(o=>o.value===v))e.value=v;};
-  const followPaid=()=>{if(!paidTouched)pd.value=pr.value;};
+  const followPaid=()=>{if(!paidTouched)pd.value=netP();};
+  const refreshCarry=(reset)=>{
+    const av=carryAvail(sd.value).length;
+    cwrap.style.display=av?"":"none";
+    if(reset)cy.value=av?Math.min(av,Math.max(1,parseNum(ls.value)||1)):0;
+    cy.max=av;
+  };
   const upd=()=>{
-    const p=parseNum(pr.value),n=Math.max(1,parseNum(ls.value)||1),b=baseP(),paid=parseNum(pd.value);
+    const p=parseNum(pr.value),n=Math.max(1,parseNum(ls.value)||1),b=baseP(),paid=parseNum(pd.value),k=carryN();
+    if(k){cinfo.textContent=`Вычитается ${money(p-netP())} ₽. К оплате: ${money(netP())} ₽.`;}else cinfo.textContent="";
     let s=p?`За занятие: ${money(p/n)} ₽.`:"";
     if(b&&p<b)s+=` Скидка к цене шаблона: ${money(b-p)} ₽ (${Math.round((b-p)/b*1000)/10}%).`;
     else if(b&&p>b)s+=` Выше цены шаблона на ${money(p-b)} ₽.`;
-    if(p&&paid<p)s+=` Останется долг: ${money(p-paid)} ₽.`;
+    const net=netP();
+    if(net&&paid<net)s+=` Останется долг: ${money(net-paid)} ₽.`;
     info.textContent=s;
   };
   const untilFromTpl=()=>{const t=tariff(ts.value);if(!untilTouched&&t&&t.validDays)un.value=addDays(dt.value,t.validDays);};
   ts.onchange=()=>{const t=tariff(ts.value);if(!t){upd();return;}
     ls.value=t.lessons;pr.value=t.price;ds.value="";setSel("direction",t.direction);setSel("subject",t.subject);setSel("teacherId",t.teacherId);setSel("format",t.format);
-    untilTouched=false;un.value=t.validDays?addDays(dt.value,t.validDays):"";followPaid();upd();};
+    untilTouched=false;un.value=t.validDays?addDays(dt.value,t.validDays):"";refreshCarry(true);followPaid();upd();};
   dt.onchange=untilFromTpl;un.oninput=()=>{untilTouched=true;};
   ds.oninput=()=>{const b=baseP();if(b){const d=Math.min(100,Math.max(0,parseNum(ds.value)));pr.value=Math.round(b*(1-d/100));followPaid();}upd();};
   pr.oninput=()=>{const b=baseP(),p=parseNum(pr.value);ds.value=b&&p<b?Math.round((b-p)/b*1000)/10:"";followPaid();upd();};
-  ls.oninput=()=>{upd();};
+  ls.oninput=()=>{refreshCarry(false);followPaid();upd();};
+  cy.oninput=()=>{followPaid();upd();};
+  sd.onchange=()=>{refreshCarry(true);followPaid();upd();};
   pd.oninput=()=>{paidTouched=true;upd();};
+  refreshCarry(true);
   if(ts.value)ts.onchange();
   else if(pr0.price){followPaid();upd();}
+  else upd();
 }
 /* --- списание занятия --- */
 function visitAbon(id){
@@ -1842,8 +1968,8 @@ function abonCard(id){
   modal("Абонемент · "+(studentName(a.studentId)||a.name),`
    <div class="stats" style="box-shadow:none">
     <div class="stat"><span class="k">Состояние</span><span class="v" style="font-size:16px"><span class="chip ${st.cls}">${st.t}</span></span><span class="n">${esc(a.name)}</span></div>
-    <div class="stat"><span class="k">Занятий</span><span class="v num">${(a.visits||[]).length}/${a.lessons}</span><span class="n">${a.closedAt?"остаток закрыт":"остаток "+abLeft(a)}</span></div>
-    <div class="stat"><span class="k">Цена</span><span class="v num">${money(a.price)}</span><span class="n">${disc?"скидка "+money(disc)+" ₽":money(abPrice(a))+" ₽ за занятие"}</span></div>
+    <div class="stat"><span class="k">Занятий</span><span class="v num">${(a.visits||[]).length}/${a.lessons}</span><span class="n">${a.closedAt?"остаток закрыт":"остаток "+abLeft(a)+(abPending(a)?", перенос "+abPending(a):"")}</span></div>
+    <div class="stat"><span class="k">Цена</span><span class="v num">${money(a.price)}</span><span class="n">${disc?"скидка "+money(disc)+" ₽":money(abPrice(a))+" ₽ за занятие"}${a.carryFrom&&a.carryFrom.length?`<br>перенесено занятий: ${a.carryFrom.length} на ${money(a.carryValue)} ₽`:""}</span></div>
     <div class="stat"><span class="k">Оплачено</span><span class="v num ${owe?"neg":"pos"}">${money(paid)}</span><span class="n">${owe?"долг "+money(owe)+" ₽":"полностью"}</span></div>
    </div>
    <div class="hint">Продан ${esc(a.date)}${a.until?" · действует до "+esc(a.until):" · без срока"} · ${esc([a.direction,a.subject,teacherName(a.teacherId),a.format].filter(Boolean).join(" · ")||"без привязки")}${a.note?"<br>"+esc(a.note).replace(/\n/g,"<br>"):""}</div>
@@ -1852,6 +1978,7 @@ function abonCard(id){
    <div class="row" style="flex-wrap:wrap">
      ${abLive(a)?`<button class="btn primary" data-act="visit" data-id="${a.id}">Списать занятие</button>`:""}
      ${owe?`<button class="btn" data-act="abon-pay" data-id="${a.id}">Принять оплату</button>`:""}
+     ${!a.closedAt&&abFree(a)>0?`<button class="btn" data-act="abs-add" data-id="${a.id}">Отметить пропуск</button>`:""}
      ${!a.closedAt&&unused>0?`<button class="btn" data-act="abon-extend" data-id="${a.id}">Продлить срок</button>`:""}
      <button class="btn" data-act="abon-edit" data-id="${a.id}">Изменить</button>
      <button class="btn" data-act="abon-renew" data-id="${a.id}">Продать ещё такой же</button>
@@ -1864,10 +1991,47 @@ function abonCard(id){
    ${a.visits.map((v,i)=>`<tr><td class="n">${i+1}</td><td class="n">${esc(v.date)}</td><td>${esc(teacherName(v.teacherId))}</td><td>${esc(v.note||"")}</td>
    <td class="n"><button class="btn mini danger" data-act="del-visit" data-id="${a.id}" data-i="${i}">Отменить</button></td></tr>`).join("")}
    </tbody></table></div>`:`<div class="hint">Занятия ещё не списывались.</div>`}
+   ${abAbsences(a).length?`<h3 style="font-size:14px">Пропуски и перенос</h3>
+   <div class="tw"><table><thead><tr><th>Дата</th><th>Причина</th><th>Занятие</th><th>Что с занятием</th><th></th></tr></thead><tbody>
+   ${abAbsences(a).slice().sort((p,q)=>(p.date||"").localeCompare(q.date||"")).map(x=>{
+     const nx=x.usedIn?findAbon(x.usedIn):null;
+     const st=!x.carry?`<span class="chip out">списано</span>`:x.usedIn?`<span class="chip in">учтено в абонементе${nx?" от "+esc(nx.a.date):""}</span>`:`<span class="chip warn">ждёт следующего абонемента</span>`;
+     return `<tr><td class="n">${esc(x.date)}</td><td>${esc(absReason(x.reason).t)}</td><td>${esc(x.group||"")}${x.note?`<div class="hint">${esc(x.note)}</div>`:""}</td><td>${st}</td>
+     <td class="n">${x.usedIn?"":`<button class="btn mini danger" data-act="abs-del" data-id="${a.id}" data-i="${esc(x.id)}">Убрать</button>`}</td></tr>`;}).join("")}
+   </tbody></table></div>`:""}
+   ${a.carryFrom&&a.carryFrom.length?`<div class="hint">При продаже учтено перенесённых занятий: ${a.carryFrom.length}. Их стоимость (${money(a.carryValue)} ₽) вычтена из суммы к оплате и признаётся выручкой по мере занятий.</div>`:""}
    <h3 style="font-size:14px">Оплаты по абонементу</h3>
    ${pays.length?`<div class="tw"><table><tbody>${pays.map(p=>`<tr><td class="n">${esc(p.date)}</td><td>${esc(p.article||"")}</td><td class="n" style="color:var(--${p.type==="income"?"pos":"neg"})">${p.type==="income"?"+":"−"}${money(p.amount)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="hint">Оплат нет.</div>`}
   `,null);
   bind(document.getElementById("layer"));
+}
+function absAdd(id){
+  const f=findAbon(id); if(!f)return; const a=f.a;
+  modal("Пропуск · "+(studentName(a.studentId)||a.name),`
+   <div class="grid2">
+     <label class="f"><span>Дата занятия</span><input type="date" name="date" value="${today()}"></label>
+     <label class="f"><span>Причина</span><select name="reason">${ABS_REASONS.map(r=>`<option value="${r.k}">${r.t}</option>`).join("")}</select></label>
+   </div>
+   <label class="f"><span>Комментарий</span><input name="note" placeholder="что за занятие, подробности"></label>
+  `,async(l)=>{
+    const d=val(l,"date")||today(), rk=val(l,"reason")||"center", note=val(l,"note");
+    if(abFree(a)<=0){toast("Свободных занятий нет");return false;}
+    if(!absReason(rk).carry){
+      a.visits.push({date:d,teacherId:a.teacherId||"",note:"Пропуск без предупреждения"+(note?": "+note:"")});
+      if(await saveMonth(f.m))toast("Занятие списано как пропуск без предупреждения");
+      return;
+    }
+    if(abAbsences(a).some(x=>x.date===d&&!x.groupId&&x.note===note)){toast("Этот пропуск уже отмечен");return false;}
+    (a.absences=a.absences||[]).push({id:uid("abs"),date:d,reason:rk,carry:true,groupId:"",group:"",whole:false,note,usedIn:""});
+    if(await saveMonth(f.m))toast("Занятие перенесено на следующий абонемент");
+  },"Отметить");
+}
+async function absDel(id,absId){
+  const f=findAbon(id); if(!f)return; const x=abAbsences(f.a).find(y=>y.id===absId); if(!x)return;
+  if(x.usedIn){toast("Это занятие уже учтено в другом абонементе");return;}
+  f.a.absences=f.a.absences.filter(y=>y!==x);
+  if(await saveMonth(f.m))toast("Пропуск убран, занятие снова доступно");
+  document.getElementById("layer").innerHTML="";render();
 }
 async function delVisit(id,i){
   const f=findAbon(id); if(!f)return; const [v]=f.a.visits.splice(i,1);
@@ -1888,7 +2052,7 @@ function abonEdit(id){
      <label class="f"><span>Действует до</span><input type="date" name="until" value="${esc(a.until||"")}"></label>
    </div>
    <div class="grid3">
-     <label class="f"><span>Количество занятий</span><input type="number" name="lessons" min="${Math.max(1,(a.visits||[]).length)}" value="${a.lessons}"></label>
+     <label class="f"><span>Количество занятий</span><input type="number" name="lessons" min="${Math.max(1,(a.visits||[]).length+abApplied(a)+abPending(a))}" value="${a.lessons}"></label>
      <label class="f"><span>Сумма, ₽</span><input type="number" name="price" min="0" value="${a.price}"></label>
      <label class="f"><span>Цена без скидки, ₽</span><input type="number" name="listPrice" min="0" value="${a.listPrice==null?a.price:a.listPrice}"></label>
    </div>
@@ -1989,6 +2153,7 @@ async function abonReopen(id){
 }
 function abonDelete(id){
   const f=findAbon(id); if(!f)return; const a=f.a;
+  if(abApplied(a)>0){toast("Часть занятий перенесена в другой абонемент — сначала удалите тот абонемент");return;}
   const ops=allOps().filter(o=>o.abonId===a.id), sum=ops.filter(o=>o.type==="income").reduce((s,o)=>s+o.amount,0);
   modal("Удалить абонемент",`
    <div class="hint">${esc(studentName(a.studentId))} · ${esc(a.name)} · ${money(a.price)} ₽. Проведённых занятий: ${(a.visits||[]).length}.</div>
@@ -2007,6 +2172,8 @@ function abonDelete(id){
     }
     /* занятия из журнала групп становятся «без абонемента» */
     for(const m of Object.keys(S.lessons))S.lessons[m].forEach(ls=>(ls.attend||[]).forEach(at=>{if(at.abonId===a.id){at.abonId="";at.price=0;months.add(m);}}));
+    /* перенесённые в него занятия снова ждут следующего абонемента */
+    (a.carryFrom||[]).forEach(cf=>{const fo=findAbon(cf.abonId);if(fo){const x=abAbsences(fo.a).find(y=>y.id===cf.absId);if(x&&x.usedIn===a.id){x.usedIn="";months.add(fo.m);}}});
     S.abon[f.m]=S.abon[f.m].filter(x=>x.id!==a.id); markDel("un_abon",a.id);
     let ok=true;for(const m of months)if(!(await saveMonth(m)))ok=false;
     if(ok)toast("Абонемент удалён");
@@ -2203,6 +2370,8 @@ function bind(root){
         case "abon-close":abonClose(id);break;
         case "abon-reopen":abonReopen(id);break;
         case "abon-del":abonDelete(id);break;
+        case "abs-add":absAdd(id);break;
+        case "abs-del":if(confirm("Убрать пропуск? Занятие снова будет доступно на этом абонементе."))absDel(id,i);break;
         case "abon-renew":{const f=findAbon(id);if(f){const a=f.a,t=tariff(a.tariffId);newAbon(a.studentId,t&&!t.archived?t.id:"",t&&!t.archived?null:{name:a.name,lessons:a.lessons,price:a.price,direction:a.direction,subject:a.subject,teacherId:a.teacherId,format:a.format});}}break;
         case "copy-tariff":{const t=tariff(id);if(t){const c=Object.assign({},t,{id:uid("tr"),name:t.name+" (копия)",archived:false});S.tariffs.push(c);if(await saveTariffs()){toast("Копия создана — измените название и цену");render();editTariff(c.id);}}}break;
         case "del-visit":if(confirm("Отменить списание занятия?"))delVisit(id,+i);break;
