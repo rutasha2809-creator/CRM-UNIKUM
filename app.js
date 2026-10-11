@@ -14,7 +14,7 @@ function toast(msg){const t=document.createElement("div");t.className="toast";t.
 
 /* ============================ состояние ============================ */
 const S={
-  refs:null, students:[], teachers:[], tariffs:[], groups:[],
+  ro:false, refs:null, students:[], teachers:[], tariffs:[], groups:[],
   ops:{},      // "2026-09" -> [операции]
   abon:{},     // "2026-09" -> [абонементы]
   lessons:{},  // "2026-09" -> [проведённые занятия]
@@ -150,8 +150,18 @@ async function afterLogin(email) {
     return;
   }
   MEMBERS = data;
+  const me = data.find(m => m.email === String(email).toLowerCase());
+  S.ro = !!me && me.role === "viewer";
+  document.body.classList.toggle("ro", S.ro);
   hideAuth();
-  document.getElementById("dbstate").textContent = email;
+  document.getElementById("dbstate").textContent = email + (S.ro ? " · только просмотр" : "");
+  const bar = document.querySelector(".topbar");
+  const chip = bar && bar.querySelector(".rochip");
+  if (S.ro && bar && !chip) {
+    const c = document.createElement("span");
+    c.className = "chip warn rochip"; c.textContent = "Только просмотр";
+    bar.insertBefore(c, bar.querySelector(".menuwrap"));
+  } else if (!S.ro && chip) chip.remove();
   await loadAll();
   S.ready = true; render();
 }
@@ -206,8 +216,12 @@ async function loadAll() {
 }
 async function reloadAll() { await loadAll(); render(); toast("Данные обновлены"); }
 
+/* режим просмотра: наблюдатель видит всё, но ничего не меняет (запрет продублирован на сервере) */
+const roStop = () => { if (S.ro) { toast("Режим просмотра: изменения не сохраняются"); return true; } return false; };
+
 /* --- запись справочников --- */
 async function saveRefs() {
+  if (roStop()) return false;
   const r = R();
   const e1 = (await SB.from("un_settings").upsert({
     id: 1, usn: r.usn, fixed_fee: r.fixedFee, sources: r.sources, subjects: r.subjects, pl_groups: r.groups, updated_at: new Date().toISOString()
@@ -238,13 +252,14 @@ async function syncList(table, items, mapOut) {
   }
   return flushDel(table);
 }
-const saveStudents = () => syncList("un_students", S.students, outStudent);
-const saveTeachers = () => syncList("un_teachers", S.teachers, outTeacher);
-const saveTariffs = () => syncList("un_tariffs", S.tariffs, outTariff);
-const saveGroups = () => syncList("un_groups", S.groups, outGroup);
+const saveStudents = () => roStop() ? false : syncList("un_students", S.students, outStudent);
+const saveTeachers = () => roStop() ? false : syncList("un_teachers", S.teachers, outTeacher);
+const saveTariffs = () => roStop() ? false : syncList("un_tariffs", S.tariffs, outTariff);
+const saveGroups = () => roStop() ? false : syncList("un_groups", S.groups, outGroup);
 
 /* --- запись данных месяца --- */
 async function syncMonthTable(table, month, items, mapOut) {
+  if (S.ro) return false;
   const from = monthStart(month), to = monthEnd(month);
   if (items.length) {
     const { error } = await SB.from(table).upsert(items.map(mapOut));
@@ -269,6 +284,7 @@ async function syncVisits(abon) {
   return true;
 }
 async function saveMonth(m) {
+  if (roStop()) return false;
   ensureMonth(m);
   let ok = await syncMonthTable("un_abon", m, S.abon[m], outAbon);
   for (const a of S.abon[m]) { if (!(await syncVisits(a))) ok = false; }
@@ -278,13 +294,23 @@ async function saveMonth(m) {
 }
 
 /* --- доступ пользователей --- */
-async function addMember(email, name) {
-  const { error } = await SB.from("un_members").insert({ email: email.trim().toLowerCase(), name: name || "" });
+async function addMember(email, name, role) {
+  if (roStop()) return false;
+  const m = { email: email.trim().toLowerCase(), name: name || "", role: role === "viewer" ? "viewer" : "owner" };
+  const { error } = await SB.from("un_members").insert(m);
   if (error) { sbErr(error, "доступ"); return false; }
-  MEMBERS.push({ email: email.trim().toLowerCase(), name: name || "", role: "user" });
+  MEMBERS.push(m);
+  return true;
+}
+async function setMemberRole(email, role) {
+  if (roStop()) return false;
+  const { error } = await SB.from("un_members").update({ role }).eq("email", email);
+  if (error) { sbErr(error, "доступ"); return false; }
+  const m = MEMBERS.find(x => x.email === email); if (m) m.role = role;
   return true;
 }
 async function removeMember(email) {
+  if (roStop()) return false;
   const { error } = await SB.from("un_members").delete().eq("email", email);
   if (error) { sbErr(error, "доступ"); return false; }
   MEMBERS = MEMBERS.filter(m => m.email !== email);
@@ -398,6 +424,10 @@ function render(){
   if(!S.ready){ v.innerHTML='<div class="panel"><div class="empty">Загружаю данные центра…</div></div>'; return; }
   ({dash:viewDash,students:viewStudents,lessons:viewLessons,abon:viewAbon,ops:viewOps,reports:viewReports,nsi:viewNsi}[S.nav])(v);
   bindSort(v);
+  if(S.ro){
+    v.querySelectorAll("[data-conduct],[data-gcancel],[data-gundo],[data-save]").forEach(e=>e.remove());
+    v.querySelectorAll("input[data-att],select[data-abs],[data-par]").forEach(e=>{e.disabled=true;});
+  }
 }
 
 /* ============================ дашборд ============================ */
@@ -1632,8 +1662,9 @@ function nsiSectionHTML(k){
     const body=`<div class="pad hint">Работать с базой центра могут только адреса из этого списка.</div>
       <div class="tw"><table><thead><tr><th>Почта</th><th>Имя</th><th>Роль</th><th></th></tr></thead><tbody>
       ${MEMBERS.map(m=>`<tr><td>${esc(m.email)}${m.email===ME?' <span class="chip mut">это вы</span>':""}</td><td>${esc(m.name||"")}</td>
-      <td>${m.role==="owner"?"владелец":"пользователь"}</td>
-      <td class="n">${m.email===ME?"":`<button class="btn mini danger" data-act="del-member" data-id="${esc(m.email)}">Закрыть доступ</button>`}</td></tr>`).join("")}
+      <td>${m.role==="viewer"?'<span class="chip mut">только просмотр</span>':'<span class="chip acc">полный доступ</span>'}</td>
+      <td class="act">${m.email===ME?"":`<button class="btn mini" data-act="role-member" data-id="${esc(m.email)}">${m.role==="viewer"?"Дать полный доступ":"Сделать наблюдателем"}</button>
+      <button class="btn mini danger" data-act="del-member" data-id="${esc(m.email)}">Закрыть доступ</button>`}</td></tr>`).join("")}
       </tbody></table></div>`;
     return nsiPanel(k,{body});
   }
@@ -2569,9 +2600,11 @@ async function backup(){
 }
 
 /* ============================ обработчики ============================ */
+const VIEW_ACTS=new Set(["year","abon-card","student-card","toggle-arch","export-ops","export-report"]);
 function bind(root){
   root.querySelectorAll("[data-act]").forEach(el=>{
     const a=el.dataset.act,id=el.dataset.id,i=el.dataset.i;
+    if(S.ro&&!VIEW_ACTS.has(a)){el.remove();return;}
     if(a==="year"){ el.onchange=()=>{S.year=+el.value;render();}; return; }
     el.onclick=async()=>{
       switch(a){
@@ -2614,6 +2647,12 @@ function bind(root){
         case "toggle-arch":S.arch=S.arch||{};S.arch[id]=!S.arch[id];render();break;
         case "save-par":savePar(root);break;
         case "add-member":inviteMember();break;
+        case "role-member":{
+          const m=MEMBERS.find(x=>x.email===id); if(!m)break;
+          const to=m.role==="viewer"?"owner":"viewer";
+          if(!confirm(to==="viewer"?"Перевести "+id+" в режим просмотра? Человек сможет смотреть, но не сможет менять данные.":"Дать "+id+" полный доступ? Человек сможет вносить и удалять данные."))break;
+          if(await setMemberRole(id,to)){toast(to==="viewer"?"Теперь только просмотр":"Открыт полный доступ");render();}
+        }break;
         case "del-member":if(confirm("Закрыть доступ для "+id+"? Человек больше не сможет открыть базу центра.")){ if(await removeMember(id)){toast("Доступ закрыт");render();} }break;
       }
     };
@@ -2626,16 +2665,18 @@ async function savePar(root){
 }
 
 function inviteMember(){
-  modal("Пригласить в программу",`
-   <div class="grid2">
+  modal("Открыть доступ",`
+   <div class="grid3">
      <label class="f"><span>Почта</span><input name="email" type="email" placeholder="client@example.com"></label>
      <label class="f"><span>Имя</span><input name="name" placeholder="Как подписывать в списке"></label>
+     <label class="f"><span>Права</span><select name="role"><option value="viewer">Только просмотр</option><option value="owner">Полный доступ</option></select></label>
    </div>
-   <div class="hint">После добавления человек открывает ссылку на программу, нажимает «Создать аккаунт», указывает эту почту и придумывает пароль.</div>
+   <div class="hint">Наблюдатель видит все экраны и отчёты, но ничего не может изменить или удалить.<br>
+   Чтобы человек смог войти, у него должна быть учётная запись с этой почтой: создайте её в панели Supabase — Authentication → Users → Add user, с галочкой Auto Confirm User, и передайте почту с паролем лично.</div>
   `,async(l)=>{
     const email=val(l,"email"); if(!email||email.indexOf("@")<0){toast("Укажите почту");return false;}
     if(MEMBERS.some(m=>m.email===email.toLowerCase())){toast("Этот адрес уже в списке");return false;}
-    if(await addMember(email,val(l,"name"))) toast("Доступ открыт для "+email.toLowerCase());
+    if(await addMember(email,val(l,"name"),val(l,"role"))) toast("Доступ открыт для "+email.toLowerCase());
   },"Открыть доступ");
 }
 

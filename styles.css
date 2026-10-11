@@ -176,6 +176,8 @@ tr.sub td:first-child{padding-left:28px;color:var(--ink-2)}
 .who2{display:flex;align-items:center;gap:9px;min-width:0}
 .hint{color:var(--ink-3);font-size:12.5px}
 .warnbox{background:var(--warn-soft);color:var(--warn);border-radius:var(--r-s);padding:9px 12px;font-weight:500}
+body.ro .menuwrap{display:none}
+.rochip{margin-left:8px}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 18px;border-radius:99px;font-weight:500;z-index:90;box-shadow:var(--shadow-up);max-width:min(560px,92vw);text-align:center}
 @media (prefers-reduced-motion:no-preference){.toast{animation:up .18s ease-out}}
 @keyframes up{from{opacity:0;transform:translate(-50%,10px)}}
